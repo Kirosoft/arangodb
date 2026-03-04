@@ -50,6 +50,45 @@ class ReplicationAndClusterTests(unittest.TestCase):
         self.assertEqual(config_response.status_code, 200)
         self.assertEqual(config_response.body["result"]["endpoint"], "tcp://127.0.0.1:8529")
 
+        start_request = HttpRequest(
+            method="PUT",
+            path="/_api/replication/applier-start",
+            api_version=1,
+            headers=headers,
+        )
+        start_response = runtime.handle_request(start_request)
+        self.assertEqual(start_response.status_code, 200)
+        self.assertTrue(start_response.body["result"]["running"])
+
+        logger_request = HttpRequest(
+            method="GET",
+            path="/_api/replication/logger-state",
+            api_version=1,
+            headers=headers,
+        )
+        logger_response = runtime.handle_request(logger_request)
+        self.assertEqual(logger_response.status_code, 200)
+        self.assertIn("lastCommittedLogTick", logger_response.body["result"])
+
+        stop_request = HttpRequest(
+            method="PUT",
+            path="/_api/replication/applier-stop",
+            api_version=1,
+            headers=headers,
+        )
+        stop_response = runtime.handle_request(stop_request)
+        self.assertEqual(stop_response.status_code, 200)
+        self.assertFalse(stop_response.body["result"]["running"])
+
+        delete_request = HttpRequest(
+            method="DELETE",
+            path="/_api/replication/applier-config",
+            api_version=1,
+            headers=headers,
+        )
+        delete_response = runtime.handle_request(delete_request)
+        self.assertEqual(delete_response.status_code, 200)
+
     def test_cluster_health_requires_cluster_enabled(self) -> None:
         runtime = build_default_server(cluster_enabled=False)
         token = self._token(runtime)

@@ -31,6 +31,25 @@ class ReplicationService:
         self._state.last_tick += 1
         return self.applier_config()
 
+    def start_applier(self) -> ReplicationState:
+        self._state.applier_enabled = True
+        self._state.last_tick += 1
+        return self._state
+
+    def stop_applier(self) -> ReplicationState:
+        self._state.applier_enabled = False
+        self._state.last_tick += 1
+        return self._state
+
+    def clear_applier_config(self) -> None:
+        self._applier_config = {
+            "endpoint": "",
+            "username": "",
+            "includeSystem": True,
+        }
+        self._state.applier_enabled = False
+        self._state.last_tick += 1
+
 
 class ClusterService:
     def __init__(self, role: str = "single", enabled: bool = False) -> None:

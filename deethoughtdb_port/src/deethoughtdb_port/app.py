@@ -778,6 +778,19 @@ class ReplicationHandler(RestHandler):
                 },
             )
 
+        if request.method == "GET" and request.path == "/_api/replication/logger-state":
+            state = self._replication.state()
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "running": state.applier_enabled,
+                        "lastUncommittedLogTick": state.last_tick,
+                        "lastCommittedLogTick": state.last_tick,
+                    }
+                },
+            )
+
         if request.path == "/_api/replication/applier-config":
             if request.method == "GET":
                 return HttpResponse(
@@ -790,6 +803,34 @@ class ReplicationHandler(RestHandler):
                 self._replication.update_applier_config(request.body)
                 updated = self._storage.create_replication_applier_config(request.body)
                 return HttpResponse(status_code=200, body={"result": updated})
+            if request.method == "DELETE":
+                self._replication.clear_applier_config()
+                self._storage.remove_replication_applier_config()
+                return HttpResponse(status_code=200, body={"result": {"deleted": True}})
+
+        if request.path == "/_api/replication/applier-start" and request.method == "PUT":
+            state = self._replication.start_applier()
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "running": state.applier_enabled,
+                        "lastTick": state.last_tick,
+                    }
+                },
+            )
+
+        if request.path == "/_api/replication/applier-stop" and request.method == "PUT":
+            state = self._replication.stop_applier()
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "running": state.applier_enabled,
+                        "lastTick": state.last_tick,
+                    }
+                },
+            )
 
         raise bad_request("unsupported replication path")
 
