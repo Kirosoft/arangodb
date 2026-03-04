@@ -121,6 +121,17 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(log_response.status_code, 200)
         self.assertIn("messages", log_response.body["result"])
 
+        server_request = HttpRequest(
+            method="GET",
+            path="/_admin/server",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        server_response = runtime.handle_request(server_request)
+        self.assertEqual(server_response.status_code, 200)
+        self.assertEqual(server_response.body["result"]["engine"], "rocksdb")
+        self.assertIn("role", server_response.body["result"])
+
     def test_admin_shutdown_changes_status(self) -> None:
         runtime = build_default_server()
 

@@ -657,6 +657,29 @@ class AdminLogHandler(RestHandler):
         )
 
 
+class AdminServerHandler(RestHandler):
+    def __init__(self, app_server: ApplicationServer, storage: RocksDBEnginePort, cluster: ClusterService) -> None:
+        self._app_server = app_server
+        self._storage = storage
+        self._cluster = cluster
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/server expects GET")
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "server": "deethoughtdb",
+                    "status": "running" if self._app_server.is_running else "stopped",
+                    "engine": self._storage.type_name(),
+                    "role": self._cluster.role(),
+                    "clusterEnabled": self._cluster.enabled,
+                }
+            },
+        )
+
+
 class AdminSystemReportHandler(RestHandler):
     def __init__(
         self,
@@ -1128,6 +1151,17 @@ def _admin_log_handler_ctor(logger: StructuredLogBuffer):
     return _build
 
 
+def _admin_server_handler_ctor(
+    app_server: ApplicationServer,
+    storage: RocksDBEnginePort,
+    cluster: ClusterService,
+):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminServerHandler(app_server, storage, cluster)
+
+    return _build
+
+
 def _admin_system_report_handler_ctor(
     app_server: ApplicationServer,
     metrics: dict[str, object],
@@ -1274,6 +1308,11 @@ def build_default_server(
     handler_factory.add_handler("/_admin/compact", _admin_compact_handler_ctor(storage_engine), [1, 2])
     handler_factory.add_handler("/_admin/shutdown", _admin_shutdown_handler_ctor(app_server), [1, 2])
     handler_factory.add_handler("/_admin/log", _admin_log_handler_ctor(logger), [1, 2])
+    handler_factory.add_handler(
+        "/_admin/server",
+        _admin_server_handler_ctor(app_server, storage_engine, cluster),
+        [1, 2],
+    )
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
     handler_factory.add_handler(
         "/_admin/system-report",
