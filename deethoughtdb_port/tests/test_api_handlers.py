@@ -508,6 +508,81 @@ class ApiHandlerTests(unittest.TestCase):
         insert_response = runtime.handler_factory.invoke(insert_handler, insert_edge)
         self.assertEqual(insert_response.status_code, 201)
 
+    def test_import_bulk_documents(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "bulk_docs"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        import_request = HttpRequest(
+            method="POST",
+            path="/_api/import/bulk_docs",
+            api_version=1,
+            body=[{"value": 1}, {"value": 2}, {"value": 3}],
+        )
+        import_handler = runtime.handler_factory.create_handler(import_request)
+        import_response = runtime.handler_factory.invoke(import_handler, import_request)
+        self.assertEqual(import_response.status_code, 201)
+        self.assertEqual(import_response.body["result"]["created"], 3)
+        self.assertEqual(import_response.body["result"]["errors"], 0)
+
+    def test_db_prefixed_import_with_collection_in_body(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant_import"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_db/tenant_import/_api/collection",
+            api_version=1,
+            body={"name": "events"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        import_request = HttpRequest(
+            method="POST",
+            path="/_db/tenant_import/_api/import",
+            api_version=1,
+            body={
+                "collection": "events",
+                "documents": [{"kind": "a"}, {"kind": "b"}],
+            },
+        )
+        import_handler = runtime.handler_factory.create_handler(import_request)
+        import_response = runtime.handler_factory.invoke(import_handler, import_request)
+        self.assertEqual(import_response.status_code, 201)
+        self.assertEqual(import_response.body["result"]["created"], 2)
+
+    def test_import_requires_document_list(self) -> None:
+        runtime = build_default_server()
+
+        bad_import = HttpRequest(
+            method="POST",
+            path="/_api/import/missing_docs",
+            api_version=1,
+            body={"collection": "missing_docs"},
+        )
+        handler = runtime.handler_factory.create_handler(bad_import)
+        response = runtime.handler_factory.invoke(handler, bad_import)
+        self.assertEqual(response.status_code, 400)
+
 
 if __name__ == "__main__":
     unittest.main()

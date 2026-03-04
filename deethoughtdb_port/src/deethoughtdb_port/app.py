@@ -212,6 +212,56 @@ class EdgesHandler(RestHandler):
         raise bad_request("unsupported edges path")
 
 
+class ImportHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        database = _resolve_database_from_path(request)
+
+        if request.method != "POST":
+            raise bad_request("import API expects POST")
+
+        collection = request.suffixes[0] if len(request.suffixes) >= 1 else ""
+        documents: list[dict] = []
+
+        if isinstance(request.body, list):
+            documents = [item for item in request.body if isinstance(item, dict)]
+        elif isinstance(request.body, dict):
+            if not collection:
+                candidate = request.body.get("collection")
+                if isinstance(candidate, str):
+                    collection = candidate
+            payload_docs = request.body.get("documents")
+            if isinstance(payload_docs, list):
+                documents = [item for item in payload_docs if isinstance(item, dict)]
+
+        if not collection:
+            raise bad_request("import expects collection in path or body")
+        if not documents:
+            raise bad_request("import expects non-empty document list")
+
+        created = 0
+        errors = 0
+        for document in documents:
+            try:
+                self._storage.insert_document(database, collection, document)
+                created += 1
+            except KeyError:
+                errors += 1
+
+        return HttpResponse(
+            status_code=201 if errors == 0 else 202,
+            body={
+                "result": {
+                    "collection": collection,
+                    "created": created,
+                    "errors": errors,
+                }
+            },
+        )
+
+
 class IndexHandler(RestHandler):
     def __init__(self, storage: RocksDBEnginePort) -> None:
         self._storage = storage
@@ -693,6 +743,8 @@ class DbPrefixedApiHandler(RestHandler):
             return DocumentHandler(self._storage).handle(delegated)
         if resource == "edges":
             return EdgesHandler(self._storage).handle(delegated)
+        if resource == "import":
+            return ImportHandler(self._storage).handle(delegated)
         if resource == "index":
             return IndexHandler(self._storage).handle(delegated)
         if resource == "view":
@@ -948,6 +1000,13 @@ def _edges_handler_ctor(storage: RocksDBEnginePort):
     return _build
 
 
+def _import_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return ImportHandler(storage)
+
+    return _build
+
+
 def _index_handler_ctor(storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
         return IndexHandler(storage)
@@ -1036,6 +1095,9 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler(
         "/_api/edges", _edges_handler_ctor(storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/import", _import_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/index", _index_handler_ctor(storage_engine), [1, 2]
