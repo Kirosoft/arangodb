@@ -66,6 +66,14 @@ class StorageEngineContract(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def replace_document(self, database: str, collection: str, key: str, document: dict) -> dict | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_document(self, database: str, collection: str, key: str, patch: dict) -> dict | None:
+        raise NotImplementedError
+
+    @abstractmethod
     def create_index(self, database: str, collection: str, definition: dict) -> dict:
         raise NotImplementedError
 

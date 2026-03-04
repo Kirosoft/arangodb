@@ -115,6 +115,27 @@ class RocksDBEnginePort(StorageEngineContract):
         self._wal.record(f"remove_document:{database}/{collection}/{key}")
         return True
 
+    def replace_document(self, database: str, collection: str, key: str, document: dict) -> dict | None:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None or key not in documents:
+            return None
+        replaced = dict(document)
+        replaced["_key"] = key
+        documents[key] = replaced
+        self._wal.record(f"replace_document:{database}/{collection}/{key}")
+        return dict(replaced)
+
+    def update_document(self, database: str, collection: str, key: str, patch: dict) -> dict | None:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None or key not in documents:
+            return None
+        updated = dict(documents[key])
+        updated.update(patch)
+        updated["_key"] = key
+        documents[key] = updated
+        self._wal.record(f"update_document:{database}/{collection}/{key}")
+        return dict(updated)
+
     def create_index(self, database: str, collection: str, definition: dict) -> dict:
         index_info = self._catalog.create_index(database, collection, definition)
         self._wal.record(f"create_index:{database}/{collection}/{index_info['id']}")

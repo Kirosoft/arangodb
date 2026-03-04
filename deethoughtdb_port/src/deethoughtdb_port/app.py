@@ -170,6 +170,40 @@ class DocumentHandler(RestHandler):
                 )
             return HttpResponse(status_code=200, body={"result": {"removed": key}})
 
+        if request.method == "PUT" and len(request.suffixes) >= 2:
+            collection, key = request.suffixes[0], request.suffixes[1]
+            if not isinstance(request.body, dict):
+                raise bad_request("document replace expects JSON object")
+            replaced = self._storage.replace_document(database, collection, key, request.body)
+            if replaced is None:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"document '{collection}/{key}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": replaced})
+
+        if request.method == "PATCH" and len(request.suffixes) >= 2:
+            collection, key = request.suffixes[0], request.suffixes[1]
+            if not isinstance(request.body, dict):
+                raise bad_request("document update expects JSON object")
+            updated = self._storage.update_document(database, collection, key, request.body)
+            if updated is None:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"document '{collection}/{key}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": updated})
+
         raise bad_request("unsupported document path")
 
 

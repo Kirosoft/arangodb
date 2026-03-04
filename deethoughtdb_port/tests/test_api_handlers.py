@@ -107,6 +107,54 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["name"], "alice")
 
+    def test_document_put_and_patch(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users_mut"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/users_mut",
+            api_version=1,
+            body={"name": "alice", "age": 30},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        replace_doc = HttpRequest(
+            method="PUT",
+            path=f"/_api/document/users_mut/{key}",
+            api_version=1,
+            body={"name": "alice2", "city": "berlin"},
+        )
+        replace_handler = runtime.handler_factory.create_handler(replace_doc)
+        replace_response = runtime.handler_factory.invoke(replace_handler, replace_doc)
+        self.assertEqual(replace_response.status_code, 200)
+        self.assertEqual(replace_response.body["result"]["name"], "alice2")
+        self.assertNotIn("age", replace_response.body["result"])
+
+        patch_doc = HttpRequest(
+            method="PATCH",
+            path=f"/_api/document/users_mut/{key}",
+            api_version=1,
+            body={"city": "hamburg", "active": True},
+        )
+        patch_handler = runtime.handler_factory.create_handler(patch_doc)
+        patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.body["result"]["city"], "hamburg")
+        self.assertTrue(patch_response.body["result"]["active"])
+
     def test_db_prefixed_routes_use_target_database(self) -> None:
         runtime = build_default_server()
 
@@ -150,6 +198,51 @@ class ApiHandlerTests(unittest.TestCase):
         get_response = runtime.handler_factory.invoke(get_handler, get_doc)
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["kind"], "login")
+
+    def test_db_prefixed_document_patch(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant_patch"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_db/tenant_patch/_api/collection",
+            api_version=1,
+            body={"name": "events"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_db/tenant_patch/_api/document/events",
+            api_version=1,
+            body={"kind": "login", "count": 1},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        patch_doc = HttpRequest(
+            method="PATCH",
+            path=f"/_db/tenant_patch/_api/document/events/{key}",
+            api_version=1,
+            body={"count": 2},
+        )
+        patch_handler = runtime.handler_factory.create_handler(patch_doc)
+        patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
+        self.assertEqual(patch_response.status_code, 200)
+        self.assertEqual(patch_response.body["result"]["count"], 2)
 
     def test_db_prefixed_transaction_put_commit(self) -> None:
         runtime = build_default_server()
