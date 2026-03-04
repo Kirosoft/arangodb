@@ -186,6 +186,17 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(options_desc_response.status_code, 200)
         self.assertIn("server.authentication", options_desc_response.body["result"])
 
+        admin_version_request = HttpRequest(
+            method="GET",
+            path="/_admin/version",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        admin_version_response = runtime.handle_request(admin_version_request)
+        self.assertEqual(admin_version_response.status_code, 200)
+        self.assertIn("version", admin_version_response.body)
+        self.assertIn("build", admin_version_response.body)
+
     def test_admin_shutdown_changes_status(self) -> None:
         runtime = build_default_server()
 

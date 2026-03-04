@@ -25,18 +25,23 @@ from deethoughtdb_port.transport.rest_handler import RestHandler
 
 class VersionHandler(RestHandler):
     def handle(self, request: HttpRequest) -> HttpResponse:
+        body = {
+            "server": "deethoughtdb",
+            "apiVersion": request.api_version,
+            "path": request.path,
+            "details": {
+                "engine": "rocksdb",
+                "aql": False,
+                "phase": "backend-port",
+            },
+        }
+        if request.path == "/_admin/version":
+            body["version"] = "0.1.0-port"
+            body["license"] = "Apache-2.0"
+            body["build"] = {"mode": "debug", "architecture": "x64"}
         return HttpResponse(
             status_code=200,
-            body={
-                "server": "deethoughtdb",
-                "apiVersion": request.api_version,
-                "path": request.path,
-                "details": {
-                    "engine": "rocksdb",
-                    "aql": False,
-                    "phase": "backend-port",
-                },
-            },
+            body=body,
         )
 
 
