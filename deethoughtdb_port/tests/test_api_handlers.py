@@ -292,6 +292,22 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["database"], "tenant_views")
 
+    def test_wal_properties_and_flush(self) -> None:
+        runtime = build_default_server()
+
+        wal_props = HttpRequest(method="GET", path="/_api/wal/properties", api_version=1)
+        props_handler = runtime.handler_factory.create_handler(wal_props)
+        props_response = runtime.handler_factory.invoke(props_handler, wal_props)
+        self.assertEqual(props_response.status_code, 200)
+        self.assertIn("currentTick", props_response.body["result"])
+        self.assertIn("recoveryState", props_response.body["result"])
+
+        wal_flush = HttpRequest(method="PUT", path="/_api/wal/flush", api_version=1)
+        flush_handler = runtime.handler_factory.create_handler(wal_flush)
+        flush_response = runtime.handler_factory.invoke(flush_handler, wal_flush)
+        self.assertEqual(flush_response.status_code, 200)
+        self.assertIn("tick", flush_response.body["result"])
+
 
 if __name__ == "__main__":
     unittest.main()

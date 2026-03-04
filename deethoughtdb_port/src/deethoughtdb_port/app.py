@@ -417,6 +417,29 @@ class ReplicationHandler(RestHandler):
         raise bad_request("unsupported replication path")
 
 
+class WalHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method == "GET" and request.path == "/_api/wal/properties":
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "files": self._storage.current_wal_files(),
+                        "currentTick": self._storage.current_tick(),
+                        "recoveryState": self._storage.recovery_state().value,
+                    }
+                },
+            )
+
+        if request.method == "PUT" and request.path == "/_api/wal/flush":
+            return HttpResponse(status_code=200, body={"result": self._storage.flush_wal()})
+
+        raise bad_request("unsupported wal path")
+
+
 class AdminClusterHandler(RestHandler):
     def __init__(self, cluster: ClusterService) -> None:
         self._cluster = cluster
@@ -665,6 +688,13 @@ def _replication_handler_ctor(replication: ReplicationService, storage: RocksDBE
     return _build
 
 
+def _wal_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return WalHandler(storage)
+
+    return _build
+
+
 def _admin_cluster_handler_ctor(cluster: ClusterService):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminClusterHandler(cluster)
@@ -780,6 +810,9 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler(
         "/_api/replication", _replication_handler_ctor(replication, storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/wal", _wal_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_db", _db_prefixed_api_handler_ctor(storage_engine, transaction_manager), [1, 2]
