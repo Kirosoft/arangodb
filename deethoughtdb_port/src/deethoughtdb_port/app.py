@@ -10,12 +10,12 @@ from deethoughtdb_port.domain.auth import AuthService
 from deethoughtdb_port.domain.inmemory import (
     InMemoryCatalogService,
     InMemoryTransactionManager,
-    NoopStorageEngine,
 )
 from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
 from deethoughtdb_port.observability import StructuredLogBuffer, ValidationArtifactRecorder
 from deethoughtdb_port.runtime.feature import Feature
 from deethoughtdb_port.runtime.server import ApplicationServer
+from deethoughtdb_port.storage import RocksDBEnginePort, RocksDBPortConfig
 from deethoughtdb_port.transport.http_models import HttpRequest, HttpResponse
 from deethoughtdb_port.transport.rest_factory import RestHandlerFactory
 from deethoughtdb_port.transport.rest_handler import RestHandler
@@ -198,8 +198,9 @@ class AdminSystemReportHandler(RestHandler):
 
 
 class ReplicationHandler(RestHandler):
-    def __init__(self, replication: ReplicationService) -> None:
+    def __init__(self, replication: ReplicationService, storage: RocksDBEnginePort) -> None:
         self._replication = replication
+        self._storage = storage
 
     def handle(self, request: HttpRequest) -> HttpResponse:
         if request.method == "GET" and request.path == "/_api/replication/state":
@@ -219,12 +220,13 @@ class ReplicationHandler(RestHandler):
             if request.method == "GET":
                 return HttpResponse(
                     status_code=200,
-                    body={"result": self._replication.applier_config()},
+                    body={"result": self._storage.get_replication_applier_config()},
                 )
             if request.method == "PUT":
                 if not isinstance(request.body, dict):
                     raise bad_request("replication applier config expects JSON object")
-                updated = self._replication.update_applier_config(request.body)
+                self._replication.update_applier_config(request.body)
+                updated = self._storage.create_replication_applier_config(request.body)
                 return HttpResponse(status_code=200, body={"result": updated})
 
         raise bad_request("unsupported replication path")
@@ -256,7 +258,7 @@ class ServerRuntime:
     handler_factory: RestHandlerFactory
     catalog: InMemoryCatalogService
     transaction_manager: InMemoryTransactionManager
-    storage_engine: NoopStorageEngine
+    storage_engine: RocksDBEnginePort
     auth: AuthService
     metrics: dict[str, object]
     replication: ReplicationService
@@ -411,9 +413,9 @@ def _admin_system_report_handler_ctor(
     return _build
 
 
-def _replication_handler_ctor(replication: ReplicationService):
+def _replication_handler_ctor(replication: ReplicationService, storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
-        return ReplicationHandler(replication)
+        return ReplicationHandler(replication, storage)
 
     return _build
 
@@ -425,7 +427,11 @@ def _admin_cluster_handler_ctor(cluster: ClusterService):
     return _build
 
 
-def build_default_server(cluster_enabled: bool = True, artifact_dir: str | None = None) -> ServerRuntime:
+def build_default_server(
+    cluster_enabled: bool = True,
+    artifact_dir: str | None = None,
+    rocksdb_root: str | None = None,
+) -> ServerRuntime:
     app_server = ApplicationServer()
     app_server.register_feature(Feature(name="Config"))
     app_server.register_feature(Feature(name="Network", depends_on={"Config"}))
@@ -433,7 +439,9 @@ def build_default_server(cluster_enabled: bool = True, artifact_dir: str | None 
 
     catalog = InMemoryCatalogService()
     transaction_manager = InMemoryTransactionManager()
-    storage_engine = NoopStorageEngine()
+    storage_engine = RocksDBEnginePort(
+        RocksDBPortConfig.from_root(rocksdb_root or "artifacts/rocksdb")
+    )
     auth = AuthService()
     auth.create_user("root", "deethoughtdb", is_admin=True)
     replication = ReplicationService(mode="cluster" if cluster_enabled else "single")
@@ -471,7 +479,7 @@ def build_default_server(cluster_enabled: bool = True, artifact_dir: str | None 
         "/_api/transaction", _transaction_handler_ctor(transaction_manager), [1, 2]
     )
     handler_factory.add_prefix_handler(
-        "/_api/replication", _replication_handler_ctor(replication), [1, 2]
+        "/_api/replication", _replication_handler_ctor(replication, storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler("/", _handler_ctor(CatchAllHandler), [1, 2])
     handler_factory.seal()
