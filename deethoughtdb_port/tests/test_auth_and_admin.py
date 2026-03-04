@@ -208,6 +208,16 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(options_desc_response.status_code, 200)
         self.assertIn("server.authentication", options_desc_response.body["result"])
 
+        routing_reload_request = HttpRequest(
+            method="POST",
+            path="/_admin/routing/reload",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        routing_reload_response = runtime.handle_request(routing_reload_request)
+        self.assertEqual(routing_reload_response.status_code, 200)
+        self.assertTrue(routing_reload_response.body["result"]["routesReloaded"])
+
         admin_version_request = HttpRequest(
             method="GET",
             path="/_admin/version",

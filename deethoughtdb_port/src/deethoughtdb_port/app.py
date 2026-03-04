@@ -933,6 +933,16 @@ class AdminSystemReportHandler(RestHandler):
         )
 
 
+class AdminRoutingReloadHandler(RestHandler):
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "POST":
+            raise bad_request("/_admin/routing/reload expects POST")
+        return HttpResponse(
+            status_code=200,
+            body={"result": {"routesReloaded": True}},
+        )
+
+
 class ReplicationHandler(RestHandler):
     def __init__(self, replication: ReplicationService, storage: RocksDBEnginePort) -> None:
         self._replication = replication
@@ -1465,6 +1475,13 @@ def _admin_system_report_handler_ctor(
     return _build
 
 
+def _admin_routing_reload_handler_ctor():
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminRoutingReloadHandler()
+
+    return _build
+
+
 def _replication_handler_ctor(replication: ReplicationService, storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
         return ReplicationHandler(replication, storage)
@@ -1633,6 +1650,11 @@ def build_default_server(
     handler_factory.add_handler(
         "/_admin/system-report",
         _admin_system_report_handler_ctor(app_server, metrics, logger, recorder),
+        [1, 2],
+    )
+    handler_factory.add_handler(
+        "/_admin/routing/reload",
+        _admin_routing_reload_handler_ctor(),
         [1, 2],
     )
     handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])
