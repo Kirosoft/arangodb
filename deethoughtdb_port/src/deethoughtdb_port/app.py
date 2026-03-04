@@ -138,7 +138,7 @@ class DocumentHandler(RestHandler):
                 inserted = self._storage.insert_document(database, collection, request.body)
             except KeyError as exc:
                 raise bad_request(str(exc)) from exc
-            return HttpResponse(status_code=201, body={"result": inserted})
+            return self._document_response(201, inserted)
 
         if request.method == "GET" and len(request.suffixes) >= 2:
             collection, key = request.suffixes[0], request.suffixes[1]
@@ -153,21 +153,19 @@ class DocumentHandler(RestHandler):
                         "errorMessage": f"document '{collection}/{key}' not found",
                     },
                 )
-            return HttpResponse(status_code=200, body={"result": document})
+            return self._document_response(200, document)
 
         if request.method == "DELETE" and len(request.suffixes) >= 2:
             collection, key = request.suffixes[0], request.suffixes[1]
+            existing = self._storage.get_document(database, collection, key)
+            if existing is None:
+                return self._document_not_found(collection, key)
+            rev_error = self._check_revision_precondition(request, None, existing)
+            if rev_error is not None:
+                return rev_error
             removed = self._storage.remove_document(database, collection, key)
             if not removed:
-                return HttpResponse(
-                    status_code=404,
-                    body={
-                        "error": True,
-                        "code": 404,
-                        "errorNum": 404,
-                        "errorMessage": f"document '{collection}/{key}' not found",
-                    },
-                )
+                return self._document_not_found(collection, key)
             return HttpResponse(status_code=200, body={"result": {"removed": key}})
 
         if request.method == "PUT" and len(request.suffixes) >= 2:
@@ -183,7 +181,7 @@ class DocumentHandler(RestHandler):
             replaced = self._storage.replace_document(database, collection, key, request.body)
             if replaced is None:
                 return self._document_not_found(collection, key)
-            return HttpResponse(status_code=200, body={"result": replaced})
+            return self._document_response(200, replaced)
 
         if request.method == "PATCH" and len(request.suffixes) >= 2:
             collection, key = request.suffixes[0], request.suffixes[1]
@@ -198,7 +196,7 @@ class DocumentHandler(RestHandler):
             updated = self._storage.update_document(database, collection, key, request.body)
             if updated is None:
                 return self._document_not_found(collection, key)
-            return HttpResponse(status_code=200, body={"result": updated})
+            return self._document_response(200, updated)
 
         raise bad_request("unsupported document path")
 
@@ -226,10 +224,18 @@ class DocumentHandler(RestHandler):
             },
         )
 
+    @staticmethod
+    def _document_response(status_code: int, document: dict) -> HttpResponse:
+        revision = document.get("_rev")
+        headers: dict[str, str] = {}
+        if isinstance(revision, str) and revision:
+            headers["etag"] = revision
+        return HttpResponse(status_code=status_code, body={"result": document}, headers=headers)
+
     def _check_revision_precondition(
         self,
         request: HttpRequest,
-        body: dict,
+        body: dict | None,
         existing: dict,
     ) -> HttpResponse | None:
         expected = self._expected_revision(request, body)
@@ -242,10 +248,12 @@ class DocumentHandler(RestHandler):
         return None
 
     @staticmethod
-    def _expected_revision(request: HttpRequest, body: dict) -> str | None:
+    def _expected_revision(request: HttpRequest, body: dict | None) -> str | None:
         header = request.headers.get("if-match") or request.headers.get("If-Match")
         if isinstance(header, str) and header:
             return header.strip().strip('"')
+        if body is None:
+            return None
         body_rev = body.get("_rev")
         if isinstance(body_rev, str) and body_rev:
             return body_rev

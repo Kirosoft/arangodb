@@ -195,6 +195,7 @@ class ApiHandlerTests(unittest.TestCase):
         patch_handler = runtime.handler_factory.create_handler(patch_doc)
         patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
         self.assertEqual(patch_response.status_code, 200)
+        self.assertIn("etag", patch_response.headers)
 
     def test_document_patch_revision_mismatch_returns_412(self) -> None:
         runtime = build_default_server()
@@ -229,6 +230,87 @@ class ApiHandlerTests(unittest.TestCase):
         patch_handler = runtime.handler_factory.create_handler(patch_doc)
         patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
         self.assertEqual(patch_response.status_code, 412)
+
+    def test_document_get_returns_etag(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users_etag"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/users_etag",
+            api_version=1,
+            body={"name": "alice"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+        self.assertIn("etag", insert_response.headers)
+
+        get_doc = HttpRequest(
+            method="GET",
+            path=f"/_api/document/users_etag/{key}",
+            api_version=1,
+        )
+        get_handler = runtime.handler_factory.create_handler(get_doc)
+        get_response = runtime.handler_factory.invoke(get_handler, get_doc)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertIn("etag", get_response.headers)
+        self.assertEqual(get_response.headers["etag"], get_response.body["result"]["_rev"])
+
+    def test_document_delete_with_if_match(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users_delete_rev"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/users_delete_rev",
+            api_version=1,
+            body={"name": "alice"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+        rev = insert_response.body["result"]["_rev"]
+
+        bad_delete = HttpRequest(
+            method="DELETE",
+            path=f"/_api/document/users_delete_rev/{key}",
+            api_version=1,
+            headers={"if-match": "bad-rev"},
+        )
+        bad_handler = runtime.handler_factory.create_handler(bad_delete)
+        bad_response = runtime.handler_factory.invoke(bad_handler, bad_delete)
+        self.assertEqual(bad_response.status_code, 412)
+
+        good_delete = HttpRequest(
+            method="DELETE",
+            path=f"/_api/document/users_delete_rev/{key}",
+            api_version=1,
+            headers={"if-match": rev},
+        )
+        good_handler = runtime.handler_factory.create_handler(good_delete)
+        good_response = runtime.handler_factory.invoke(good_handler, good_delete)
+        self.assertEqual(good_response.status_code, 200)
 
     def test_db_prefixed_routes_use_target_database(self) -> None:
         runtime = build_default_server()
