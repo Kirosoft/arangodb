@@ -90,6 +90,17 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(metrics_response.status_code, 200)
         self.assertGreaterEqual(metrics_response.body["result"]["requestsTotal"], 1)
 
+        time_request = HttpRequest(
+            method="GET",
+            path="/_admin/time",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        time_response = runtime.handle_request(time_request)
+        self.assertEqual(time_response.status_code, 200)
+        self.assertIn("utc", time_response.body["result"])
+        self.assertIn("timestamp", time_response.body["result"])
+
     def test_user_api_admin_lifecycle(self) -> None:
         runtime = build_default_server()
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter_ns
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from deethoughtdb_port.api.errors import ApiError, bad_request, forbidden, unauthorized
@@ -586,6 +587,20 @@ class AdminStatusHandler(RestHandler):
         )
 
 
+class AdminTimeHandler(RestHandler):
+    def handle(self, _request: HttpRequest) -> HttpResponse:
+        now = datetime.now(tz=timezone.utc)
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "utc": now.isoformat(),
+                    "timestamp": int(now.timestamp()),
+                }
+            },
+        )
+
+
 class AdminMetricsHandler(RestHandler):
     def __init__(self, metrics: dict[str, object]) -> None:
         self._metrics = metrics
@@ -1040,6 +1055,13 @@ def _admin_status_handler_ctor(app_server: ApplicationServer):
     return _build
 
 
+def _admin_time_handler_ctor():
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminTimeHandler()
+
+    return _build
+
+
 def _admin_metrics_handler_ctor(metrics: dict[str, object]):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminMetricsHandler(metrics)
@@ -1189,6 +1211,7 @@ def build_default_server(
     handler_factory.add_handler("/_api/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/status", _admin_status_handler_ctor(app_server), [1, 2])
+    handler_factory.add_handler("/_admin/time", _admin_time_handler_ctor(), [1, 2])
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
     handler_factory.add_handler(
         "/_admin/system-report",
