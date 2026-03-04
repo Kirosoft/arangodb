@@ -111,6 +111,16 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(compact_response.status_code, 200)
         self.assertTrue(compact_response.body["result"]["compacted"])
 
+        log_request = HttpRequest(
+            method="GET",
+            path="/_admin/log",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        log_response = runtime.handle_request(log_request)
+        self.assertEqual(log_response.status_code, 200)
+        self.assertIn("messages", log_response.body["result"])
+
     def test_admin_shutdown_changes_status(self) -> None:
         runtime = build_default_server()
 

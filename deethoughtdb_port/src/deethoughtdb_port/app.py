@@ -644,6 +644,19 @@ class AdminMetricsHandler(RestHandler):
         )
 
 
+class AdminLogHandler(RestHandler):
+    def __init__(self, logger: StructuredLogBuffer) -> None:
+        self._logger = logger
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/log expects GET")
+        return HttpResponse(
+            status_code=200,
+            body={"result": {"count": self._logger.count(), "messages": self._logger.recent(limit=100)}},
+        )
+
+
 class AdminSystemReportHandler(RestHandler):
     def __init__(
         self,
@@ -1108,6 +1121,13 @@ def _admin_metrics_handler_ctor(metrics: dict[str, object]):
     return _build
 
 
+def _admin_log_handler_ctor(logger: StructuredLogBuffer):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminLogHandler(logger)
+
+    return _build
+
+
 def _admin_system_report_handler_ctor(
     app_server: ApplicationServer,
     metrics: dict[str, object],
@@ -1253,6 +1273,7 @@ def build_default_server(
     handler_factory.add_handler("/_admin/time", _admin_time_handler_ctor(), [1, 2])
     handler_factory.add_handler("/_admin/compact", _admin_compact_handler_ctor(storage_engine), [1, 2])
     handler_factory.add_handler("/_admin/shutdown", _admin_shutdown_handler_ctor(app_server), [1, 2])
+    handler_factory.add_handler("/_admin/log", _admin_log_handler_ctor(logger), [1, 2])
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
     handler_factory.add_handler(
         "/_admin/system-report",
