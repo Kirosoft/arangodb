@@ -165,6 +165,42 @@ class LiveRocksDBIntegrationTests(unittest.TestCase):
             expected=(200, 202),
         )
 
+    def test_wal_properties_live(self) -> None:
+        wal = self.client.request("GET", "/_api/wal/properties", expected=(200,))
+        self.assertIsInstance(wal, dict)
+        self.assertGreater(len(wal), 0)
+
+    def test_index_and_view_endpoints_live(self) -> None:
+        db = urllib.parse.quote(self.test_db)
+
+        self.client.request(
+            "POST",
+            f"/_db/{db}/_api/collection",
+            body={"name": "docs_idx", "waitForSync": False},
+            expected=(200, 201, 202, 409),
+        )
+
+        index = self.client.request(
+            "POST",
+            f"/_db/{db}/_api/index?collection=docs_idx",
+            body={"type": "hash", "fields": ["value"]},
+            expected=(200, 201, 202),
+        )
+        index_payload = index.get("result", index)
+        self.assertIsInstance(index_payload, dict)
+        self.assertTrue("id" in index_payload or "isNewlyCreated" in index_payload)
+
+        view_name = f"v_{int(time.time() * 1000)}"
+        view = self.client.request(
+            "POST",
+            f"/_db/{db}/_api/view",
+            body={"name": view_name, "type": "arangosearch"},
+            expected=(200, 201, 202),
+        )
+        view_payload = view.get("result", view)
+        self.assertIsInstance(view_payload, dict)
+        self.assertEqual(view_payload.get("name"), view_name)
+
 
 if __name__ == "__main__":
     unittest.main()
