@@ -36,6 +36,17 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(engine_response.body["name"], "rocksdb")
         self.assertTrue(engine_response.body["supports"]["databases"])
 
+    def test_engine_stats_endpoint(self) -> None:
+        runtime = build_default_server()
+
+        request = HttpRequest(method="GET", path="/_api/engine/stats", api_version=1)
+        handler = runtime.handler_factory.create_handler(request)
+        response = runtime.handler_factory.invoke(handler, request)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.body["result"]["engine"], "rocksdb")
+        self.assertIn("currentTick", response.body["result"])
+
     def test_database_create_and_list(self) -> None:
         runtime = build_default_server()
 

@@ -102,6 +102,23 @@ class EngineHandler(RestHandler):
         if request.method != "GET":
             raise bad_request("/_api/engine expects GET")
 
+        if len(request.suffixes) == 1 and request.suffixes[0] == "stats":
+            health = self._storage.health_check()
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "engine": self._storage.type_name(),
+                        "status": health.get("status", "unknown"),
+                        "recoveryState": health.get("recoveryState", "unknown"),
+                        "currentTick": self._storage.current_tick(),
+                    }
+                },
+            )
+
+        if len(request.suffixes) > 0:
+            raise bad_request("unsupported engine path")
+
         return HttpResponse(
             status_code=200,
             body={
@@ -1546,7 +1563,7 @@ def build_default_server(
     handler_factory.add_prefix_handler(
         "/_api/database", _database_handler_ctor(storage_engine), [1, 2]
     )
-    handler_factory.add_handler("/_api/engine", _engine_handler_ctor(storage_engine), [1, 2])
+    handler_factory.add_prefix_handler("/_api/engine", _engine_handler_ctor(storage_engine), [1, 2])
     handler_factory.add_prefix_handler(
         "/_api/collection", _collection_handler_ctor(storage_engine), [1, 2]
     )
