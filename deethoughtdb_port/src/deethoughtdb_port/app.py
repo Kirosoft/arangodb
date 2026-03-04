@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from deethoughtdb_port.api.errors import bad_request
+from deethoughtdb_port.api.errors import ApiError, bad_request, forbidden, unauthorized
+from deethoughtdb_port.domain.auth import AuthService
 from deethoughtdb_port.domain.inmemory import (
     InMemoryCatalogService,
     InMemoryTransactionManager,
@@ -99,6 +100,58 @@ class TransactionHandler(RestHandler):
         raise bad_request("unsupported transaction path")
 
 
+class OpenAuthHandler(RestHandler):
+    def __init__(self, auth: AuthService) -> None:
+        self._auth = auth
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "POST":
+            raise bad_request("/_open/auth expects POST")
+        if not isinstance(request.body, dict):
+            raise bad_request("/_open/auth expects JSON body")
+
+        username = str(request.body.get("username", ""))
+        password = str(request.body.get("password", ""))
+        if not username or not password:
+            raise bad_request("/_open/auth requires username and password")
+
+        token = self._auth.authenticate(username, password)
+        if token is None:
+            raise unauthorized("invalid credentials")
+        return HttpResponse(status_code=200, body={"result": {"token": token}})
+
+
+class AdminStatusHandler(RestHandler):
+    def __init__(self, app_server: ApplicationServer) -> None:
+        self._app_server = app_server
+
+    def handle(self, _request: HttpRequest) -> HttpResponse:
+        return HttpResponse(
+            status_code=200,
+            body={
+                "server": "deethoughtdb",
+                "status": "running" if self._app_server.is_running else "stopped",
+                "startupOrder": self._app_server.startup_order,
+            },
+        )
+
+
+class AdminMetricsHandler(RestHandler):
+    def __init__(self, metrics: dict[str, object]) -> None:
+        self._metrics = metrics
+
+    def handle(self, _request: HttpRequest) -> HttpResponse:
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "requestsTotal": self._metrics["requests_total"],
+                    "responsesByStatus": self._metrics["responses_by_status"],
+                }
+            },
+        )
+
+
 @dataclass(slots=True)
 class ServerRuntime:
     app_server: ApplicationServer
@@ -106,6 +159,45 @@ class ServerRuntime:
     catalog: InMemoryCatalogService
     transaction_manager: InMemoryTransactionManager
     storage_engine: NoopStorageEngine
+    auth: AuthService
+    metrics: dict[str, object]
+
+    def handle_request(self, request: HttpRequest) -> HttpResponse:
+        self._record_request()
+        try:
+            self._enforce_auth(request)
+            handler = self.handler_factory.create_handler(request)
+            response = self.handler_factory.invoke(handler, request)
+        except ApiError as exc:
+            response = HttpResponse(status_code=exc.status_code, body=exc.to_payload())
+
+        self._record_response(response.status_code)
+        return response
+
+    def _record_request(self) -> None:
+        self.metrics["requests_total"] = int(self.metrics["requests_total"]) + 1
+
+    def _record_response(self, status_code: int) -> None:
+        by_status = self.metrics["responses_by_status"]
+        by_status[str(status_code)] = by_status.get(str(status_code), 0) + 1
+
+    def _enforce_auth(self, request: HttpRequest) -> None:
+        if request.path in {"/_api/version", "/_admin/version", "/_open/auth"}:
+            return
+
+        header = request.headers.get("authorization", "")
+        prefix = "Bearer "
+        if not header.startswith(prefix):
+            raise unauthorized("missing bearer token")
+
+        token = header[len(prefix) :]
+        principal = self.auth.validate_token(token)
+        if principal is None:
+            raise unauthorized("invalid bearer token")
+
+        request.headers["x-principal"] = principal
+        if request.path.startswith("/_admin/") and not self.auth.is_admin(principal):
+            raise forbidden("admin privileges required")
 
 
 def _handler_ctor(handler_type: type[RestHandler]):
@@ -129,6 +221,27 @@ def _transaction_handler_ctor(manager: InMemoryTransactionManager):
     return _build
 
 
+def _open_auth_handler_ctor(auth: AuthService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return OpenAuthHandler(auth)
+
+    return _build
+
+
+def _admin_status_handler_ctor(app_server: ApplicationServer):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminStatusHandler(app_server)
+
+    return _build
+
+
+def _admin_metrics_handler_ctor(metrics: dict[str, object]):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminMetricsHandler(metrics)
+
+    return _build
+
+
 def build_default_server() -> ServerRuntime:
     app_server = ApplicationServer()
     app_server.register_feature(Feature(name="Config"))
@@ -138,12 +251,22 @@ def build_default_server() -> ServerRuntime:
     catalog = InMemoryCatalogService()
     transaction_manager = InMemoryTransactionManager()
     storage_engine = NoopStorageEngine()
+    auth = AuthService()
+    auth.create_user("root", "deethoughtdb", is_admin=True)
+
+    metrics: dict[str, object] = {
+        "requests_total": 0,
+        "responses_by_status": {},
+    }
 
     catalog.create_database("_system")
 
     handler_factory = RestHandlerFactory(max_api_version=2)
     handler_factory.add_handler("/_api/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/version", _handler_ctor(VersionHandler), [1, 2])
+    handler_factory.add_handler("/_admin/status", _admin_status_handler_ctor(app_server), [1, 2])
+    handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
+    handler_factory.add_handler("/_open/auth", _open_auth_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler(
         "/_api/database", _database_handler_ctor(catalog), [1, 2]
     )
@@ -153,10 +276,14 @@ def build_default_server() -> ServerRuntime:
     handler_factory.add_prefix_handler("/", _handler_ctor(CatchAllHandler), [1, 2])
     handler_factory.seal()
 
+    app_server.boot()
+
     return ServerRuntime(
         app_server=app_server,
         handler_factory=handler_factory,
         catalog=catalog,
         transaction_manager=transaction_manager,
         storage_engine=storage_engine,
+        auth=auth,
+        metrics=metrics,
     )

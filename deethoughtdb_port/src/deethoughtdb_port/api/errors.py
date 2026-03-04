@@ -38,3 +38,19 @@ def bad_request(message: str) -> ApiError:
         error_num=400,
         error_message=message,
     )
+
+
+def unauthorized(message: str = "unauthorized") -> ApiError:
+    return ApiError(
+        status_code=401,
+        error_num=401,
+        error_message=message,
+    )
+
+
+def forbidden(message: str = "forbidden") -> ApiError:
+    return ApiError(
+        status_code=403,
+        error_num=403,
+        error_message=message,
+    )

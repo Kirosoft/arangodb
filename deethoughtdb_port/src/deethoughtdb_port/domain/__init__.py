@@ -1,5 +1,6 @@
 from .interfaces import CatalogService, CollectionInfo, DatabaseInfo, StorageEngine, TransactionManager
 from .inmemory import InMemoryCatalogService, InMemoryTransactionManager, NoopStorageEngine
+from .auth import AuthService
 
 __all__ = [
     "CatalogService",
@@ -10,4 +11,5 @@ __all__ = [
     "InMemoryCatalogService",
     "InMemoryTransactionManager",
     "NoopStorageEngine",
+    "AuthService",
 ]

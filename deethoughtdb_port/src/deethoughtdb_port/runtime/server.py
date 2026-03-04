@@ -15,6 +15,10 @@ class ApplicationServer:
     def startup_order(self) -> list[str]:
         return list(self._startup_order)
 
+    @property
+    def is_running(self) -> bool:
+        return self._is_running
+
     def register_feature(self, feature: Feature) -> None:
         if feature.name in self._features:
             raise ValueError(f"feature '{feature.name}' already registered")
