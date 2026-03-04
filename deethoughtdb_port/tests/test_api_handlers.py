@@ -5,6 +5,17 @@ from deethoughtdb_port.transport.http_models import HttpRequest
 
 
 class ApiHandlerTests(unittest.TestCase):
+    def test_engine_endpoint_reports_rocksdb(self) -> None:
+        runtime = build_default_server()
+
+        engine_request = HttpRequest(method="GET", path="/_api/engine", api_version=1)
+        engine_handler = runtime.handler_factory.create_handler(engine_request)
+        engine_response = runtime.handler_factory.invoke(engine_handler, engine_request)
+
+        self.assertEqual(engine_response.status_code, 200)
+        self.assertEqual(engine_response.body["name"], "rocksdb")
+        self.assertTrue(engine_response.body["supports"]["databases"])
+
     def test_database_create_and_list(self) -> None:
         runtime = build_default_server()
 
@@ -120,6 +131,28 @@ class ApiHandlerTests(unittest.TestCase):
         get_response = runtime.handler_factory.invoke(get_handler, get_doc)
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["kind"], "login")
+
+    def test_insert_document_without_collection_returns_api_error(self) -> None:
+        runtime = build_default_server()
+
+        login_request = HttpRequest(
+            method="POST",
+            path="/_open/auth",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb"},
+        )
+        token = runtime.handle_request(login_request).body["result"]["token"]
+
+        bad_insert = HttpRequest(
+            method="POST",
+            path="/_api/document/missing_collection",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+            body={"value": 1},
+        )
+        response = runtime.handle_request(bad_insert)
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(response.body["error"])
 
 
 if __name__ == "__main__":

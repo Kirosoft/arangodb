@@ -72,6 +72,23 @@ class DatabaseHandler(RestHandler):
         raise bad_request(f"unsupported method '{request.method}' for /_api/database")
 
 
+class EngineHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_api/engine expects GET")
+
+        return HttpResponse(
+            status_code=200,
+            body={
+                "name": self._storage.type_name(),
+                "supports": self._storage.get_capabilities(),
+            },
+        )
+
+
 class CollectionHandler(RestHandler):
     def __init__(self, storage: RocksDBEnginePort) -> None:
         self._storage = storage
@@ -88,7 +105,10 @@ class CollectionHandler(RestHandler):
         if request.method == "POST":
             if not isinstance(request.body, dict) or "name" not in request.body:
                 raise bad_request("collection creation expects body {'name': '<collection-name>'}")
-            collection = self._storage.create_collection(database, str(request.body["name"]))
+            try:
+                collection = self._storage.create_collection(database, str(request.body["name"]))
+            except KeyError as exc:
+                raise bad_request(str(exc)) from exc
             return HttpResponse(status_code=201, body={"result": collection})
 
         if request.method == "DELETE" and len(request.suffixes) == 1:
@@ -112,7 +132,10 @@ class DocumentHandler(RestHandler):
             collection = request.suffixes[0]
             if not isinstance(request.body, dict):
                 raise bad_request("document insert expects JSON object")
-            inserted = self._storage.insert_document(database, collection, request.body)
+            try:
+                inserted = self._storage.insert_document(database, collection, request.body)
+            except KeyError as exc:
+                raise bad_request(str(exc)) from exc
             return HttpResponse(status_code=201, body={"result": inserted})
 
         if request.method == "GET" and len(request.suffixes) >= 2:
@@ -498,6 +521,13 @@ def _database_handler_ctor(storage: RocksDBEnginePort):
     return _build
 
 
+def _engine_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return EngineHandler(storage)
+
+    return _build
+
+
 def _transaction_handler_ctor(manager: InMemoryTransactionManager):
     def _build(_data: dict | None = None) -> RestHandler:
         return TransactionHandler(manager)
@@ -628,6 +658,7 @@ def build_default_server(
     handler_factory.add_prefix_handler(
         "/_api/database", _database_handler_ctor(storage_engine), [1, 2]
     )
+    handler_factory.add_handler("/_api/engine", _engine_handler_ctor(storage_engine), [1, 2])
     handler_factory.add_prefix_handler(
         "/_api/collection", _collection_handler_ctor(storage_engine), [1, 2]
     )
