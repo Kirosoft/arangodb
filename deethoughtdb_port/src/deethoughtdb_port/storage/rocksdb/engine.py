@@ -54,6 +54,7 @@ class RocksDBEnginePort(StorageEngineContract):
             "transactions": True,
             "databases": True,
             "collections": True,
+            "views": True,
             "wal": True,
             "bindingAvailable": self._bindings.available,
         }
@@ -121,6 +122,23 @@ class RocksDBEnginePort(StorageEngineContract):
 
     def list_indexes(self, database: str, collection: str) -> list[dict]:
         return self._catalog.list_indexes(database, collection)
+
+    def create_view(self, database: str, definition: dict) -> dict:
+        view_info = self._catalog.create_view(database, definition)
+        self._wal.record(f"create_view:{database}/{view_info['name']}")
+        return view_info
+
+    def list_views(self, database: str) -> list[dict]:
+        return self._catalog.list_views(database)
+
+    def get_view(self, database: str, name: str) -> dict | None:
+        return self._catalog.get_view(database, name)
+
+    def drop_view(self, database: str, name: str) -> bool:
+        removed = self._catalog.drop_view(database, name)
+        if removed:
+            self._wal.record(f"drop_view:{database}/{name}")
+        return removed
 
     def flush_wal(self) -> dict:
         return self._wal.flush()

@@ -74,6 +74,22 @@ class StorageEngineContract(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def create_view(self, database: str, definition: dict) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_views(self, database: str) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_view(self, database: str, name: str) -> dict | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def drop_view(self, database: str, name: str) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
     def flush_wal(self) -> dict:
         raise NotImplementedError
 

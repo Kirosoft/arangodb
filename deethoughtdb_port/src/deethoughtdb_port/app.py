@@ -201,6 +201,62 @@ class IndexHandler(RestHandler):
         raise bad_request("unsupported index path")
 
 
+class ViewHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        database = _resolve_database_from_path(request)
+
+        if request.method == "POST":
+            if not isinstance(request.body, dict):
+                raise bad_request("view creation expects JSON object")
+            if "name" not in request.body:
+                raise bad_request("view creation expects 'name' in body")
+            try:
+                view_info = self._storage.create_view(database, request.body)
+            except (KeyError, ValueError) as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=201, body={"result": view_info})
+
+        if request.method == "GET" and len(request.suffixes) == 0:
+            try:
+                views = self._storage.list_views(database)
+            except KeyError as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=200, body={"result": views})
+
+        if request.method == "GET" and len(request.suffixes) == 1:
+            view = self._storage.get_view(database, request.suffixes[0])
+            if view is None:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"view '{request.suffixes[0]}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": view})
+
+        if request.method == "DELETE" and len(request.suffixes) == 1:
+            removed = self._storage.drop_view(database, request.suffixes[0])
+            if not removed:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"view '{request.suffixes[0]}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": {"dropped": request.suffixes[0]}})
+
+        raise bad_request("unsupported view path")
+
+
 class TransactionHandler(RestHandler):
     def __init__(self, manager: InMemoryTransactionManager) -> None:
         self._manager = manager
@@ -414,6 +470,8 @@ class DbPrefixedApiHandler(RestHandler):
             return DocumentHandler(self._storage).handle(delegated)
         if resource == "index":
             return IndexHandler(self._storage).handle(delegated)
+        if resource == "view":
+            return ViewHandler(self._storage).handle(delegated)
         if resource == "transaction":
             return TransactionHandler(self._manager).handle(delegated)
 
@@ -635,6 +693,13 @@ def _index_handler_ctor(storage: RocksDBEnginePort):
     return _build
 
 
+def _view_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return ViewHandler(storage)
+
+    return _build
+
+
 def _db_prefixed_api_handler_ctor(storage: RocksDBEnginePort, manager: InMemoryTransactionManager):
     def _build(_data: dict | None = None) -> RestHandler:
         return DbPrefixedApiHandler(storage, manager)
@@ -706,6 +771,9 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler(
         "/_api/index", _index_handler_ctor(storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/view", _view_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/transaction", _transaction_handler_ctor(transaction_manager), [1, 2]

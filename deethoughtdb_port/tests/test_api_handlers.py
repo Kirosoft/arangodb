@@ -228,6 +228,70 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(list_response.status_code, 200)
         self.assertEqual(len(list_response.body["result"]), 1)
 
+    def test_view_lifecycle_direct_routes(self) -> None:
+        runtime = build_default_server()
+
+        create_view = HttpRequest(
+            method="POST",
+            path="/_api/view",
+            api_version=1,
+            body={"name": "v_users", "type": "search", "properties": {"cleanupIntervalStep": 2}},
+        )
+        create_handler = runtime.handler_factory.create_handler(create_view)
+        create_response = runtime.handler_factory.invoke(create_handler, create_view)
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.body["result"]["name"], "v_users")
+
+        list_views = HttpRequest(method="GET", path="/_api/view", api_version=1)
+        list_handler = runtime.handler_factory.create_handler(list_views)
+        list_response = runtime.handler_factory.invoke(list_handler, list_views)
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(any(view["name"] == "v_users" for view in list_response.body["result"]))
+
+        get_view = HttpRequest(method="GET", path="/_api/view/v_users", api_version=1)
+        get_handler = runtime.handler_factory.create_handler(get_view)
+        get_response = runtime.handler_factory.invoke(get_handler, get_view)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["type"], "search")
+
+        drop_view = HttpRequest(method="DELETE", path="/_api/view/v_users", api_version=1)
+        drop_handler = runtime.handler_factory.create_handler(drop_view)
+        drop_response = runtime.handler_factory.invoke(drop_handler, drop_view)
+        self.assertEqual(drop_response.status_code, 200)
+
+    def test_view_lifecycle_db_prefixed_routes(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant_views"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_view = HttpRequest(
+            method="POST",
+            path="/_db/tenant_views/_api/view",
+            api_version=1,
+            body={"name": "v_events", "type": "search"},
+        )
+        create_handler = runtime.handler_factory.create_handler(create_view)
+        create_response = runtime.handler_factory.invoke(create_handler, create_view)
+        self.assertEqual(create_response.status_code, 201)
+
+        get_view = HttpRequest(
+            method="GET",
+            path="/_db/tenant_views/_api/view/v_events",
+            api_version=1,
+        )
+        get_handler = runtime.handler_factory.create_handler(get_view)
+        get_response = runtime.handler_factory.invoke(get_handler, get_view)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["database"], "tenant_views")
+
 
 if __name__ == "__main__":
     unittest.main()
