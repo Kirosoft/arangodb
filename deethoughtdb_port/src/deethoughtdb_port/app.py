@@ -508,13 +508,23 @@ class OpenAuthHandler(RestHandler):
 
         username = str(request.body.get("username", ""))
         password = str(request.body.get("password", ""))
+        ttl = request.body.get("ttl")
+        ttl_seconds: int | None = None
+        if ttl is not None:
+            try:
+                ttl_seconds = int(ttl)
+            except (TypeError, ValueError) as exc:
+                raise bad_request("/_open/auth ttl must be an integer") from exc
         if not username or not password:
             raise bad_request("/_open/auth requires username and password")
 
-        token = self._auth.authenticate(username, password)
+        token = self._auth.authenticate(username, password, ttl_seconds=ttl_seconds)
         if token is None:
             raise unauthorized("invalid credentials")
-        return HttpResponse(status_code=200, body={"result": {"token": token}})
+        result = {"token": token}
+        if ttl_seconds is not None:
+            result["expiresIn"] = max(0, ttl_seconds)
+        return HttpResponse(status_code=200, body={"result": result})
 
 
 class TokenHandler(RestHandler):
@@ -529,13 +539,23 @@ class TokenHandler(RestHandler):
 
         username = str(request.body.get("username", ""))
         password = str(request.body.get("password", ""))
+        ttl = request.body.get("ttl")
+        ttl_seconds: int | None = None
+        if ttl is not None:
+            try:
+                ttl_seconds = int(ttl)
+            except (TypeError, ValueError) as exc:
+                raise bad_request("/_api/token ttl must be an integer") from exc
         if not username or not password:
             raise bad_request("/_api/token requires username and password")
 
-        token = self._auth.authenticate(username, password)
+        token = self._auth.authenticate(username, password, ttl_seconds=ttl_seconds)
         if token is None:
             raise unauthorized("invalid credentials")
-        return HttpResponse(status_code=200, body={"result": {"token": token, "jwt": token}})
+        result = {"token": token, "jwt": token}
+        if ttl_seconds is not None:
+            result["expiresIn"] = max(0, ttl_seconds)
+        return HttpResponse(status_code=200, body={"result": result})
 
 
 class UserHandler(RestHandler):

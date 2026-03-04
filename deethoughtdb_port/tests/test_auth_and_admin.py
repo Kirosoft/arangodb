@@ -47,6 +47,29 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertIn("token", token_response.body["result"])
         self.assertIn("jwt", token_response.body["result"])
 
+    def test_api_token_ttl_expired_rejected(self) -> None:
+        runtime = build_default_server()
+
+        token_request = HttpRequest(
+            method="POST",
+            path="/_api/token",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb", "ttl": 0},
+        )
+        token_response = runtime.handle_request(token_request)
+        self.assertEqual(token_response.status_code, 200)
+        self.assertEqual(token_response.body["result"]["expiresIn"], 0)
+        token = token_response.body["result"]["token"]
+
+        db_request = HttpRequest(
+            method="GET",
+            path="/_api/database",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        db_response = runtime.handle_request(db_request)
+        self.assertEqual(db_response.status_code, 401)
+
     def test_api_token_invalid_credentials(self) -> None:
         runtime = build_default_server()
 
