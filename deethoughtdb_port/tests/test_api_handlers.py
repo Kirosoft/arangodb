@@ -418,6 +418,96 @@ class ApiHandlerTests(unittest.TestCase):
         delete_response = runtime.handler_factory.invoke(delete_handler, delete_task)
         self.assertEqual(delete_response.status_code, 200)
 
+    def test_edges_insert_and_get(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "relations"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_edge = HttpRequest(
+            method="POST",
+            path="/_api/edges/relations",
+            api_version=1,
+            body={"_from": "users/alice", "_to": "users/bob", "kind": "knows"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_edge)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_edge)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        get_edge = HttpRequest(
+            method="GET",
+            path=f"/_api/edges/relations/{key}",
+            api_version=1,
+        )
+        get_handler = runtime.handler_factory.create_handler(get_edge)
+        get_response = runtime.handler_factory.invoke(get_handler, get_edge)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["kind"], "knows")
+
+    def test_edges_requires_from_to(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "relations2"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_edge = HttpRequest(
+            method="POST",
+            path="/_api/edges/relations2",
+            api_version=1,
+            body={"kind": "invalid"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_edge)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_edge)
+        self.assertEqual(insert_response.status_code, 400)
+
+    def test_db_prefixed_edges_routes(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant_edges"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_db/tenant_edges/_api/collection",
+            api_version=1,
+            body={"name": "relations"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_edge = HttpRequest(
+            method="POST",
+            path="/_db/tenant_edges/_api/edges/relations",
+            api_version=1,
+            body={"_from": "users/a", "_to": "users/b"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_edge)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_edge)
+        self.assertEqual(insert_response.status_code, 201)
+
 
 if __name__ == "__main__":
     unittest.main()
