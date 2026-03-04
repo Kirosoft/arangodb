@@ -174,37 +174,82 @@ class DocumentHandler(RestHandler):
             collection, key = request.suffixes[0], request.suffixes[1]
             if not isinstance(request.body, dict):
                 raise bad_request("document replace expects JSON object")
+            existing = self._storage.get_document(database, collection, key)
+            if existing is None:
+                return self._document_not_found(collection, key)
+            rev_error = self._check_revision_precondition(request, request.body, existing)
+            if rev_error is not None:
+                return rev_error
             replaced = self._storage.replace_document(database, collection, key, request.body)
             if replaced is None:
-                return HttpResponse(
-                    status_code=404,
-                    body={
-                        "error": True,
-                        "code": 404,
-                        "errorNum": 404,
-                        "errorMessage": f"document '{collection}/{key}' not found",
-                    },
-                )
+                return self._document_not_found(collection, key)
             return HttpResponse(status_code=200, body={"result": replaced})
 
         if request.method == "PATCH" and len(request.suffixes) >= 2:
             collection, key = request.suffixes[0], request.suffixes[1]
             if not isinstance(request.body, dict):
                 raise bad_request("document update expects JSON object")
+            existing = self._storage.get_document(database, collection, key)
+            if existing is None:
+                return self._document_not_found(collection, key)
+            rev_error = self._check_revision_precondition(request, request.body, existing)
+            if rev_error is not None:
+                return rev_error
             updated = self._storage.update_document(database, collection, key, request.body)
             if updated is None:
-                return HttpResponse(
-                    status_code=404,
-                    body={
-                        "error": True,
-                        "code": 404,
-                        "errorNum": 404,
-                        "errorMessage": f"document '{collection}/{key}' not found",
-                    },
-                )
+                return self._document_not_found(collection, key)
             return HttpResponse(status_code=200, body={"result": updated})
 
         raise bad_request("unsupported document path")
+
+    @staticmethod
+    def _document_not_found(collection: str, key: str) -> HttpResponse:
+        return HttpResponse(
+            status_code=404,
+            body={
+                "error": True,
+                "code": 404,
+                "errorNum": 404,
+                "errorMessage": f"document '{collection}/{key}' not found",
+            },
+        )
+
+    @staticmethod
+    def _revision_mismatch() -> HttpResponse:
+        return HttpResponse(
+            status_code=412,
+            body={
+                "error": True,
+                "code": 412,
+                "errorNum": 412,
+                "errorMessage": "document revision mismatch",
+            },
+        )
+
+    def _check_revision_precondition(
+        self,
+        request: HttpRequest,
+        body: dict,
+        existing: dict,
+    ) -> HttpResponse | None:
+        expected = self._expected_revision(request, body)
+        if expected is None:
+            return None
+
+        current = existing.get("_rev")
+        if not isinstance(current, str) or current != expected:
+            return self._revision_mismatch()
+        return None
+
+    @staticmethod
+    def _expected_revision(request: HttpRequest, body: dict) -> str | None:
+        header = request.headers.get("if-match") or request.headers.get("If-Match")
+        if isinstance(header, str) and header:
+            return header.strip().strip('"')
+        body_rev = body.get("_rev")
+        if isinstance(body_rev, str) and body_rev:
+            return body_rev
+        return None
 
 
 class EdgesHandler(RestHandler):

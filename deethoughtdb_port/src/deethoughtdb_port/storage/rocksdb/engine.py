@@ -97,6 +97,8 @@ class RocksDBEnginePort(StorageEngineContract):
         stored = dict(document)
         key = str(stored.get("_key", uuid.uuid4().hex))
         stored["_key"] = key
+        stored["_id"] = f"{collection}/{key}"
+        stored["_rev"] = self._new_revision()
         self._documents[database][collection][key] = stored
         self._wal.record(f"insert_document:{database}/{collection}/{key}")
         return dict(stored)
@@ -121,6 +123,8 @@ class RocksDBEnginePort(StorageEngineContract):
             return None
         replaced = dict(document)
         replaced["_key"] = key
+        replaced["_id"] = f"{collection}/{key}"
+        replaced["_rev"] = self._new_revision()
         documents[key] = replaced
         self._wal.record(f"replace_document:{database}/{collection}/{key}")
         return dict(replaced)
@@ -132,9 +136,15 @@ class RocksDBEnginePort(StorageEngineContract):
         updated = dict(documents[key])
         updated.update(patch)
         updated["_key"] = key
+        updated["_id"] = f"{collection}/{key}"
+        updated["_rev"] = self._new_revision()
         documents[key] = updated
         self._wal.record(f"update_document:{database}/{collection}/{key}")
         return dict(updated)
+
+    @staticmethod
+    def _new_revision() -> str:
+        return uuid.uuid4().hex
 
     def create_index(self, database: str, collection: str, definition: dict) -> dict:
         index_info = self._catalog.create_index(database, collection, definition)

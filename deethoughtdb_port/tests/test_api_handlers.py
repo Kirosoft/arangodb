@@ -130,6 +130,8 @@ class ApiHandlerTests(unittest.TestCase):
         insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
         self.assertEqual(insert_response.status_code, 201)
         key = insert_response.body["result"]["_key"]
+        original_rev = insert_response.body["result"]["_rev"]
+        self.assertIn("_id", insert_response.body["result"])
 
         replace_doc = HttpRequest(
             method="PUT",
@@ -142,6 +144,8 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(replace_response.status_code, 200)
         self.assertEqual(replace_response.body["result"]["name"], "alice2")
         self.assertNotIn("age", replace_response.body["result"])
+        self.assertNotEqual(replace_response.body["result"]["_rev"], original_rev)
+        replaced_rev = replace_response.body["result"]["_rev"]
 
         patch_doc = HttpRequest(
             method="PATCH",
@@ -154,6 +158,77 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(patch_response.status_code, 200)
         self.assertEqual(patch_response.body["result"]["city"], "hamburg")
         self.assertTrue(patch_response.body["result"]["active"])
+        self.assertNotEqual(patch_response.body["result"]["_rev"], replaced_rev)
+
+    def test_document_patch_with_if_match_revision(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users_rev"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/users_rev",
+            api_version=1,
+            body={"name": "alice"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+        rev = insert_response.body["result"]["_rev"]
+
+        patch_doc = HttpRequest(
+            method="PATCH",
+            path=f"/_api/document/users_rev/{key}",
+            api_version=1,
+            headers={"if-match": rev},
+            body={"flag": True},
+        )
+        patch_handler = runtime.handler_factory.create_handler(patch_doc)
+        patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
+        self.assertEqual(patch_response.status_code, 200)
+
+    def test_document_patch_revision_mismatch_returns_412(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users_rev_mismatch"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/users_rev_mismatch",
+            api_version=1,
+            body={"name": "alice"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        patch_doc = HttpRequest(
+            method="PATCH",
+            path=f"/_api/document/users_rev_mismatch/{key}",
+            api_version=1,
+            body={"_rev": "wrong-rev", "flag": False},
+        )
+        patch_handler = runtime.handler_factory.create_handler(patch_doc)
+        patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
+        self.assertEqual(patch_response.status_code, 412)
 
     def test_db_prefixed_routes_use_target_database(self) -> None:
         runtime = build_default_server()
@@ -243,6 +318,51 @@ class ApiHandlerTests(unittest.TestCase):
         patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
         self.assertEqual(patch_response.status_code, 200)
         self.assertEqual(patch_response.body["result"]["count"], 2)
+
+    def test_db_prefixed_document_revision_precondition(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant_rev"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_db/tenant_rev/_api/collection",
+            api_version=1,
+            body={"name": "events"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_db/tenant_rev/_api/document/events",
+            api_version=1,
+            body={"kind": "login"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        patch_doc = HttpRequest(
+            method="PATCH",
+            path=f"/_db/tenant_rev/_api/document/events/{key}",
+            api_version=1,
+            headers={"if-match": "bad-rev"},
+            body={"kind": "logout"},
+        )
+        patch_handler = runtime.handler_factory.create_handler(patch_doc)
+        patch_response = runtime.handler_factory.invoke(patch_handler, patch_doc)
+        self.assertEqual(patch_response.status_code, 412)
 
     def test_db_prefixed_transaction_put_commit(self) -> None:
         runtime = build_default_server()
