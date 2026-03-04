@@ -601,6 +601,31 @@ class AdminTimeHandler(RestHandler):
         )
 
 
+class AdminCompactHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "PUT":
+            raise bad_request("/_admin/compact expects PUT")
+        flushed = self._storage.flush_wal()
+        return HttpResponse(
+            status_code=200,
+            body={"result": {"compacted": True, "flush": flushed}},
+        )
+
+
+class AdminShutdownHandler(RestHandler):
+    def __init__(self, app_server: ApplicationServer) -> None:
+        self._app_server = app_server
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "POST":
+            raise bad_request("/_admin/shutdown expects POST")
+        self._app_server.shutdown()
+        return HttpResponse(status_code=200, body={"result": {"shutdown": True}})
+
+
 class AdminMetricsHandler(RestHandler):
     def __init__(self, metrics: dict[str, object]) -> None:
         self._metrics = metrics
@@ -1062,6 +1087,20 @@ def _admin_time_handler_ctor():
     return _build
 
 
+def _admin_compact_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminCompactHandler(storage)
+
+    return _build
+
+
+def _admin_shutdown_handler_ctor(app_server: ApplicationServer):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminShutdownHandler(app_server)
+
+    return _build
+
+
 def _admin_metrics_handler_ctor(metrics: dict[str, object]):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminMetricsHandler(metrics)
@@ -1212,6 +1251,8 @@ def build_default_server(
     handler_factory.add_handler("/_admin/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/status", _admin_status_handler_ctor(app_server), [1, 2])
     handler_factory.add_handler("/_admin/time", _admin_time_handler_ctor(), [1, 2])
+    handler_factory.add_handler("/_admin/compact", _admin_compact_handler_ctor(storage_engine), [1, 2])
+    handler_factory.add_handler("/_admin/shutdown", _admin_shutdown_handler_ctor(app_server), [1, 2])
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
     handler_factory.add_handler(
         "/_admin/system-report",

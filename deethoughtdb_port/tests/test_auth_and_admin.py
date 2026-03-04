@@ -101,6 +101,47 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertIn("utc", time_response.body["result"])
         self.assertIn("timestamp", time_response.body["result"])
 
+        compact_request = HttpRequest(
+            method="PUT",
+            path="/_admin/compact",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        compact_response = runtime.handle_request(compact_request)
+        self.assertEqual(compact_response.status_code, 200)
+        self.assertTrue(compact_response.body["result"]["compacted"])
+
+    def test_admin_shutdown_changes_status(self) -> None:
+        runtime = build_default_server()
+
+        login_request = HttpRequest(
+            method="POST",
+            path="/_open/auth",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb"},
+        )
+        token = runtime.handle_request(login_request).body["result"]["token"]
+
+        shutdown_request = HttpRequest(
+            method="POST",
+            path="/_admin/shutdown",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        shutdown_response = runtime.handle_request(shutdown_request)
+        self.assertEqual(shutdown_response.status_code, 200)
+        self.assertTrue(shutdown_response.body["result"]["shutdown"])
+
+        status_request = HttpRequest(
+            method="GET",
+            path="/_admin/status",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        status_response = runtime.handle_request(status_request)
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(status_response.body["status"], "stopped")
+
     def test_user_api_admin_lifecycle(self) -> None:
         runtime = build_default_server()
 
