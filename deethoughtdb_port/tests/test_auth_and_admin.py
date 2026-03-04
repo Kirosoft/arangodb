@@ -33,6 +33,32 @@ class AuthAndAdminTests(unittest.TestCase):
         db_response = runtime.handle_request(db_request)
         self.assertEqual(db_response.status_code, 200)
 
+    def test_api_token_endpoint(self) -> None:
+        runtime = build_default_server()
+
+        token_request = HttpRequest(
+            method="POST",
+            path="/_api/token",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb"},
+        )
+        token_response = runtime.handle_request(token_request)
+        self.assertEqual(token_response.status_code, 200)
+        self.assertIn("token", token_response.body["result"])
+        self.assertIn("jwt", token_response.body["result"])
+
+    def test_api_token_invalid_credentials(self) -> None:
+        runtime = build_default_server()
+
+        token_request = HttpRequest(
+            method="POST",
+            path="/_api/token",
+            api_version=1,
+            body={"username": "root", "password": "wrong"},
+        )
+        token_response = runtime.handle_request(token_request)
+        self.assertEqual(token_response.status_code, 401)
+
     def test_admin_status_and_metrics(self) -> None:
         runtime = build_default_server()
 

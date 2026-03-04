@@ -497,6 +497,27 @@ class OpenAuthHandler(RestHandler):
         return HttpResponse(status_code=200, body={"result": {"token": token}})
 
 
+class TokenHandler(RestHandler):
+    def __init__(self, auth: AuthService) -> None:
+        self._auth = auth
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "POST":
+            raise bad_request("/_api/token expects POST")
+        if not isinstance(request.body, dict):
+            raise bad_request("/_api/token expects JSON body")
+
+        username = str(request.body.get("username", ""))
+        password = str(request.body.get("password", ""))
+        if not username or not password:
+            raise bad_request("/_api/token requires username and password")
+
+        token = self._auth.authenticate(username, password)
+        if token is None:
+            raise unauthorized("invalid credentials")
+        return HttpResponse(status_code=200, body={"result": {"token": token, "jwt": token}})
+
+
 class UserHandler(RestHandler):
     def __init__(self, auth: AuthService) -> None:
         self._auth = auth
@@ -944,7 +965,7 @@ class ServerRuntime:
         )
 
     def _enforce_auth(self, request: HttpRequest) -> str:
-        if request.path in {"/_api/version", "/_admin/version", "/_open/auth"}:
+        if request.path in {"/_api/version", "/_admin/version", "/_open/auth", "/_api/token"}:
             return "anonymous"
 
         header = request.headers.get("authorization", "")
@@ -994,6 +1015,13 @@ def _transaction_handler_ctor(manager: InMemoryTransactionManager):
 def _open_auth_handler_ctor(auth: AuthService):
     def _build(_data: dict | None = None) -> RestHandler:
         return OpenAuthHandler(auth)
+
+    return _build
+
+
+def _token_handler_ctor(auth: AuthService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return TokenHandler(auth)
 
     return _build
 
@@ -1169,6 +1197,7 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])
     handler_factory.add_handler("/_open/auth", _open_auth_handler_ctor(auth), [1, 2])
+    handler_factory.add_handler("/_api/token", _token_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler("/_api/user", _user_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler(
         "/_api/database", _database_handler_ctor(storage_engine), [1, 2]
