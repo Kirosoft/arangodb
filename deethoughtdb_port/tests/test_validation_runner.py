@@ -37,6 +37,16 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertIn("A", gate_codes)
         self.assertIn("B", gate_codes)
 
+    def test_manifest_defs_and_required_distribution(self) -> None:
+        matrix_path = validation_runner._default_matrix_path()
+        gates = validation_runner._load_matrix_gates(matrix_path)
+        manifests = validation_runner._load_manifest_defs(matrix_path)
+        self.assertGreater(len(manifests), 0)
+        required_distribution = validation_runner._required_manifests_by_gate(manifests, gates)
+        gates_present = {entry["gate"] for entry in required_distribution}
+        self.assertIn("A", gates_present)
+        self.assertIn("B", gates_present)
+
     def test_summary_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
@@ -57,6 +67,9 @@ class ValidationRunnerTests(unittest.TestCase):
                 ],
                 "matrixCoverage": {
                     "manifestsByGate": [{"gate": "A", "gateName": "backend-core", "count": 1}],
+                    "requiredManifestsByGate": [
+                        {"gate": "A", "gateName": "backend-core", "requiredCount": 1}
+                    ],
                     "coreCiGroupsByGate": [{"gate": "A", "gateName": "backend-core", "count": 1}],
                 },
             }

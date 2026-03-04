@@ -32,6 +32,13 @@ class MatrixSectionItem:
     name: str
 
 
+@dataclass(slots=True)
+class ManifestDef:
+    file: str
+    gate: str
+    required: bool
+
+
 def _default_suites() -> list[SuiteSpec]:
     return [
         SuiteSpec(
@@ -171,6 +178,87 @@ def _matrix_gate_distribution(items: list[MatrixSectionItem], gates: dict[str, G
     ]
 
 
+def _load_manifest_defs(matrix_path: pathlib.Path) -> list[ManifestDef]:
+    lines = matrix_path.read_text(encoding="utf-8").splitlines()
+    in_section = False
+    current_file: str | None = None
+    current_gate: str | None = None
+    current_required: bool | None = None
+    manifests: list[ManifestDef] = []
+
+    file_line = re.compile(r"^\s{2}-\s+file:\s+(.+)$")
+    gate_line = re.compile(r"^\s{4}gate:\s+([A-Z])\s*$")
+    required_line = re.compile(r"^\s{4}required:\s+(true|false)\s*$")
+
+    for line in lines:
+        if not in_section:
+            if line.strip() == "manifests:":
+                in_section = True
+            continue
+
+        if line and not line.startswith(" "):
+            break
+
+        file_match = file_line.match(line)
+        if file_match:
+            if current_file and current_gate and current_required is not None:
+                manifests.append(
+                    ManifestDef(file=current_file, gate=current_gate, required=current_required)
+                )
+            current_file = file_match.group(1).strip()
+            current_gate = None
+            current_required = None
+            continue
+
+        gate_match = gate_line.match(line)
+        if gate_match:
+            current_gate = gate_match.group(1)
+            continue
+
+        required_match = required_line.match(line)
+        if required_match:
+            current_required = required_match.group(1) == "true"
+
+    if current_file and current_gate and current_required is not None:
+        manifests.append(ManifestDef(file=current_file, gate=current_gate, required=current_required))
+
+    return manifests
+
+
+def _required_manifests_by_gate(manifests: list[ManifestDef], gates: dict[str, GateDef]) -> list[dict]:
+    counts: dict[str, int] = {gate: 0 for gate in gates.keys()}
+    for manifest in manifests:
+        if manifest.required and manifest.gate in counts:
+            counts[manifest.gate] += 1
+    return [
+        {
+            "gate": gate,
+            "gateName": gates[gate].name,
+            "requiredCount": counts[gate],
+        }
+        for gate in sorted(gates.keys())
+    ]
+
+
+def _git_metadata(repo_root: pathlib.Path) -> dict:
+    def _run(*args: str) -> str:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(repo_root),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return "unknown"
+        return proc.stdout.strip() or "unknown"
+
+    return {
+        "commit": _run("rev-parse", "HEAD"),
+        "branch": _run("rev-parse", "--abbrev-ref", "HEAD"),
+    }
+
+
 def run_suite(spec: SuiteSpec, env: dict[str, str]) -> dict:
     started = dt.datetime.now(dt.UTC)
     proc = subprocess.run(
@@ -221,7 +309,9 @@ def main() -> int:
         matrix_path = pathlib.Path(__file__).resolve().parents[1] / matrix_path
     gates = _load_matrix_gates(matrix_path)
     manifest_items = _load_matrix_section_items(matrix_path, "manifests")
+    manifest_defs = _load_manifest_defs(matrix_path)
     core_ci_items = _load_matrix_section_items(matrix_path, "coreCiGroups")
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
 
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", "src")
@@ -246,6 +336,7 @@ def main() -> int:
     summary = {
         "generatedOn": dt.datetime.now(dt.UTC).isoformat(),
         "matrixPath": str(matrix_path),
+        "git": _git_metadata(repo_root),
         "overall": "pass" if not blocking_failures else "fail",
         "results": [
             {
@@ -261,6 +352,7 @@ def main() -> int:
         ],
         "matrixCoverage": {
             "manifestsByGate": _matrix_gate_distribution(manifest_items, gates),
+            "requiredManifestsByGate": _required_manifests_by_gate(manifest_defs, gates),
             "coreCiGroupsByGate": _matrix_gate_distribution(core_ci_items, gates),
         },
     }
