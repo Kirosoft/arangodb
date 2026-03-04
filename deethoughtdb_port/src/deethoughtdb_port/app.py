@@ -680,6 +680,33 @@ class AdminServerHandler(RestHandler):
         )
 
 
+class AdminStatisticsHandler(RestHandler):
+    def __init__(self, metrics: dict[str, object]) -> None:
+        self._metrics = metrics
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/statistics expects GET")
+
+        requests_total = int(self._metrics["requests_total"])
+        by_status = dict(self._metrics["responses_by_status"])
+        by_path = dict(self._metrics["requests_by_path"])
+        latency = dict(self._metrics["latency_by_path_ms"])
+
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "requestsTotal": requests_total,
+                    "responsesByStatus": by_status,
+                    "requestsByPath": by_path,
+                    "latencyByPathMs": latency,
+                    "pathsTracked": len(by_path),
+                }
+            },
+        )
+
+
 class AdminSystemReportHandler(RestHandler):
     def __init__(
         self,
@@ -1162,6 +1189,13 @@ def _admin_server_handler_ctor(
     return _build
 
 
+def _admin_statistics_handler_ctor(metrics: dict[str, object]):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminStatisticsHandler(metrics)
+
+    return _build
+
+
 def _admin_system_report_handler_ctor(
     app_server: ApplicationServer,
     metrics: dict[str, object],
@@ -1311,6 +1345,11 @@ def build_default_server(
     handler_factory.add_handler(
         "/_admin/server",
         _admin_server_handler_ctor(app_server, storage_engine, cluster),
+        [1, 2],
+    )
+    handler_factory.add_handler(
+        "/_admin/statistics",
+        _admin_statistics_handler_ctor(metrics),
         [1, 2],
     )
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
