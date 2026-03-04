@@ -25,6 +25,13 @@ class GateDef:
     blocking: bool
 
 
+@dataclass(slots=True)
+class MatrixSectionItem:
+    section: str
+    gate: str
+    name: str
+
+
 def _default_suites() -> list[SuiteSpec]:
     return [
         SuiteSpec(
@@ -105,6 +112,65 @@ def _load_matrix_gates(matrix_path: pathlib.Path) -> dict[str, GateDef]:
     return gates
 
 
+def _load_matrix_section_items(matrix_path: pathlib.Path, section: str) -> list[MatrixSectionItem]:
+    lines = matrix_path.read_text(encoding="utf-8").splitlines()
+    in_section = False
+    current_name: str | None = None
+    items: list[MatrixSectionItem] = []
+
+    section_header = f"{section}:"
+    name_line = re.compile(r"^\s{2}-\s+name:\s+(.+)$")
+    file_line = re.compile(r"^\s{2}-\s+file:\s+(.+)$")
+    gate_line = re.compile(r"^\s{4}gate:\s+([A-Z])\s*$")
+
+    for line in lines:
+        if not in_section:
+            if line.strip() == section_header:
+                in_section = True
+            continue
+
+        if line and not line.startswith(" "):
+            break
+
+        name_match = name_line.match(line)
+        if name_match:
+            current_name = name_match.group(1).strip()
+            continue
+
+        file_match = file_line.match(line)
+        if file_match:
+            current_name = file_match.group(1).strip()
+            continue
+
+        gate_match = gate_line.match(line)
+        if gate_match and current_name:
+            items.append(
+                MatrixSectionItem(
+                    section=section,
+                    gate=gate_match.group(1),
+                    name=current_name,
+                )
+            )
+
+    return items
+
+
+def _matrix_gate_distribution(items: list[MatrixSectionItem], gates: dict[str, GateDef]) -> list[dict]:
+    counts: dict[str, int] = {gate: 0 for gate in gates.keys()}
+    for item in items:
+        if item.gate in counts:
+            counts[item.gate] += 1
+
+    return [
+        {
+            "gate": gate,
+            "gateName": gates[gate].name,
+            "count": counts[gate],
+        }
+        for gate in sorted(gates.keys())
+    ]
+
+
 def run_suite(spec: SuiteSpec, env: dict[str, str]) -> dict:
     started = dt.datetime.now(dt.UTC)
     proc = subprocess.run(
@@ -154,6 +220,8 @@ def main() -> int:
     if not matrix_path.is_absolute():
         matrix_path = pathlib.Path(__file__).resolve().parents[1] / matrix_path
     gates = _load_matrix_gates(matrix_path)
+    manifest_items = _load_matrix_section_items(matrix_path, "manifests")
+    core_ci_items = _load_matrix_section_items(matrix_path, "coreCiGroups")
 
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", "src")
@@ -191,6 +259,10 @@ def main() -> int:
             }
             for r in results
         ],
+        "matrixCoverage": {
+            "manifestsByGate": _matrix_gate_distribution(manifest_items, gates),
+            "coreCiGroupsByGate": _matrix_gate_distribution(core_ci_items, gates),
+        },
     }
 
     (output_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

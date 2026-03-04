@@ -8,7 +8,6 @@ from uuid import uuid4
 from deethoughtdb_port.api.errors import ApiError, bad_request, forbidden, unauthorized
 from deethoughtdb_port.domain.auth import AuthService
 from deethoughtdb_port.domain.inmemory import (
-    InMemoryCatalogService,
     InMemoryTransactionManager,
 )
 from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
@@ -49,27 +48,104 @@ class CatchAllHandler(RestHandler):
 
 
 class DatabaseHandler(RestHandler):
-    def __init__(self, catalog: InMemoryCatalogService) -> None:
-        self._catalog = catalog
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
 
     def handle(self, request: HttpRequest) -> HttpResponse:
         if request.method == "GET":
-            databases = [
-                {"id": database.database_id, "name": database.name}
-                for database in self._catalog.list_databases()
-            ]
+            databases = self._storage.get_databases()
             return HttpResponse(status_code=200, body={"result": databases})
 
         if request.method == "POST":
             if not isinstance(request.body, dict) or "name" not in request.body:
                 raise bad_request("database creation expects body {'name': '<db-name>'}")
-            database = self._catalog.create_database(str(request.body["name"]))
+            database = self._storage.create_database(str(request.body["name"]))
             return HttpResponse(
                 status_code=201,
-                body={"result": {"id": database.database_id, "name": database.name}},
+                body={"result": database},
             )
 
+        if request.method == "DELETE" and len(request.suffixes) == 1:
+            self._storage.drop_database(request.suffixes[0])
+            return HttpResponse(status_code=200, body={"result": {"dropped": request.suffixes[0]}})
+
         raise bad_request(f"unsupported method '{request.method}' for /_api/database")
+
+
+class CollectionHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        database = _resolve_database_from_path(request)
+
+        if request.method == "GET":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._storage.list_collections(database)},
+            )
+
+        if request.method == "POST":
+            if not isinstance(request.body, dict) or "name" not in request.body:
+                raise bad_request("collection creation expects body {'name': '<collection-name>'}")
+            collection = self._storage.create_collection(database, str(request.body["name"]))
+            return HttpResponse(status_code=201, body={"result": collection})
+
+        if request.method == "DELETE" and len(request.suffixes) == 1:
+            self._storage.drop_collection(database, request.suffixes[0])
+            return HttpResponse(
+                status_code=200,
+                body={"result": {"dropped": request.suffixes[0], "database": database}},
+            )
+
+        raise bad_request("unsupported collection path")
+
+
+class DocumentHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        database = _resolve_database_from_path(request)
+
+        if request.method == "POST" and len(request.suffixes) >= 1:
+            collection = request.suffixes[0]
+            if not isinstance(request.body, dict):
+                raise bad_request("document insert expects JSON object")
+            inserted = self._storage.insert_document(database, collection, request.body)
+            return HttpResponse(status_code=201, body={"result": inserted})
+
+        if request.method == "GET" and len(request.suffixes) >= 2:
+            collection, key = request.suffixes[0], request.suffixes[1]
+            document = self._storage.get_document(database, collection, key)
+            if document is None:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"document '{collection}/{key}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": document})
+
+        if request.method == "DELETE" and len(request.suffixes) >= 2:
+            collection, key = request.suffixes[0], request.suffixes[1]
+            removed = self._storage.remove_document(database, collection, key)
+            if not removed:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"document '{collection}/{key}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": {"removed": key}})
+
+        raise bad_request("unsupported document path")
 
 
 class TransactionHandler(RestHandler):
@@ -252,11 +328,60 @@ class AdminClusterHandler(RestHandler):
         raise bad_request("unsupported cluster path")
 
 
+class DbPrefixedApiHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort, manager: InMemoryTransactionManager) -> None:
+        self._storage = storage
+        self._manager = manager
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        suffixes = request.suffixes
+        if len(suffixes) < 3:
+            raise bad_request("expected /_db/<database>/_api/<resource>")
+
+        database = suffixes[0]
+        if suffixes[1] != "_api":
+            raise bad_request("expected /_db/<database>/_api/<resource>")
+
+        resource = suffixes[2]
+        delegated_path = "/_api/" + "/".join(suffixes[2:])
+        delegated = HttpRequest(
+            method=request.method,
+            path=delegated_path,
+            api_version=request.api_version,
+            headers=request.headers,
+            body=request.body,
+            prefix=request.prefix,
+            suffixes=suffixes[3:],
+        )
+        delegated.headers["x-database"] = database
+
+        if resource == "collection":
+            return CollectionHandler(self._storage).handle(delegated)
+        if resource == "document":
+            return DocumentHandler(self._storage).handle(delegated)
+        if resource == "transaction":
+            return TransactionHandler(self._manager).handle(delegated)
+
+        raise bad_request(f"unsupported db-prefixed resource '{resource}'")
+
+
+def _resolve_database_from_path(request: HttpRequest) -> str:
+    explicit = request.headers.get("x-database")
+    if explicit:
+        return explicit
+
+    path = request.path
+    if path.startswith("/_db/"):
+        parts = [part for part in path.split("/") if part]
+        if len(parts) >= 2:
+            return parts[1]
+    return "_system"
+
+
 @dataclass(slots=True)
 class ServerRuntime:
     app_server: ApplicationServer
     handler_factory: RestHandlerFactory
-    catalog: InMemoryCatalogService
     transaction_manager: InMemoryTransactionManager
     storage_engine: RocksDBEnginePort
     auth: AuthService
@@ -366,9 +491,9 @@ def _handler_ctor(handler_type: type[RestHandler]):
     return _build
 
 
-def _database_handler_ctor(catalog: InMemoryCatalogService):
+def _database_handler_ctor(storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
-        return DatabaseHandler(catalog)
+        return DatabaseHandler(storage)
 
     return _build
 
@@ -427,6 +552,27 @@ def _admin_cluster_handler_ctor(cluster: ClusterService):
     return _build
 
 
+def _collection_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return CollectionHandler(storage)
+
+    return _build
+
+
+def _document_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return DocumentHandler(storage)
+
+    return _build
+
+
+def _db_prefixed_api_handler_ctor(storage: RocksDBEnginePort, manager: InMemoryTransactionManager):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return DbPrefixedApiHandler(storage, manager)
+
+    return _build
+
+
 def _port_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -445,7 +591,6 @@ def build_default_server(
     app_server.register_feature(Feature(name="Network", depends_on={"Config"}))
     app_server.register_feature(Feature(name="Rest", depends_on={"Network"}))
 
-    catalog = InMemoryCatalogService()
     transaction_manager = InMemoryTransactionManager()
     storage_engine = RocksDBEnginePort(
         RocksDBPortConfig.from_root(rocksdb_root or default_rocksdb_root)
@@ -466,7 +611,7 @@ def build_default_server(
         base_dir=Path(artifact_dir) if artifact_dir else default_validation_dir
     )
 
-    catalog.create_database("_system")
+    storage_engine.create_database("_system")
 
     handler_factory = RestHandlerFactory(max_api_version=2)
     handler_factory.add_handler("/_api/version", _handler_ctor(VersionHandler), [1, 2])
@@ -481,13 +626,22 @@ def build_default_server(
     handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])
     handler_factory.add_handler("/_open/auth", _open_auth_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler(
-        "/_api/database", _database_handler_ctor(catalog), [1, 2]
+        "/_api/database", _database_handler_ctor(storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/collection", _collection_handler_ctor(storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/document", _document_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/transaction", _transaction_handler_ctor(transaction_manager), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/replication", _replication_handler_ctor(replication, storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_db", _db_prefixed_api_handler_ctor(storage_engine, transaction_manager), [1, 2]
     )
     handler_factory.add_prefix_handler("/", _handler_ctor(CatchAllHandler), [1, 2])
     handler_factory.seal()
@@ -497,7 +651,6 @@ def build_default_server(
     return ServerRuntime(
         app_server=app_server,
         handler_factory=handler_factory,
-        catalog=catalog,
         transaction_manager=transaction_manager,
         storage_engine=storage_engine,
         auth=auth,

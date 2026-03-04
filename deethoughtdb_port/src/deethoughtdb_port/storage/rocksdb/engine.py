@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import uuid
 
 from deethoughtdb_port.storage.contracts import (
     RecoveryState,
@@ -27,6 +28,7 @@ class RocksDBEnginePort(StorageEngineContract):
         self._released_tick = 0
         self._recovery_state = RecoveryState.DONE
         self._replication_config: dict[str, object] = {}
+        self._documents: dict[str, dict[str, dict[str, dict]]] = {}
 
         if self._bindings.available:
             data_file = Path(self._config.base_path) / "deethoughtdb.rocksdb"
@@ -61,21 +63,56 @@ class RocksDBEnginePort(StorageEngineContract):
 
     def create_database(self, name: str) -> dict:
         db = self._catalog.create_database(name)
+        self._documents.setdefault(name, {})
         self._wal.record(f"create_database:{name}")
         return db
 
     def drop_database(self, name: str) -> None:
         self._catalog.drop_database(name)
+        self._documents.pop(name, None)
         self._wal.record(f"drop_database:{name}")
 
     def create_collection(self, database: str, name: str) -> dict:
         col = self._catalog.create_collection(database, name)
+        self._documents.setdefault(database, {})
+        self._documents[database].setdefault(name, {})
         self._wal.record(f"create_collection:{database}/{name}")
         return col
 
+    def list_collections(self, database: str) -> list[dict]:
+        collections = self._catalog.collections.get(database, {})
+        return sorted(collections.values(), key=lambda item: item["id"])
+
     def drop_collection(self, database: str, name: str) -> None:
         self._catalog.drop_collection(database, name)
+        if database in self._documents:
+            self._documents[database].pop(name, None)
         self._wal.record(f"drop_collection:{database}/{name}")
+
+    def insert_document(self, database: str, collection: str, document: dict) -> dict:
+        if database not in self._documents or collection not in self._documents[database]:
+            raise KeyError(f"collection '{database}/{collection}' not found")
+
+        stored = dict(document)
+        key = str(stored.get("_key", uuid.uuid4().hex))
+        stored["_key"] = key
+        self._documents[database][collection][key] = stored
+        self._wal.record(f"insert_document:{database}/{collection}/{key}")
+        return dict(stored)
+
+    def get_document(self, database: str, collection: str, key: str) -> dict | None:
+        document = self._documents.get(database, {}).get(collection, {}).get(key)
+        if document is None:
+            return None
+        return dict(document)
+
+    def remove_document(self, database: str, collection: str, key: str) -> bool:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None or key not in documents:
+            return False
+        documents.pop(key)
+        self._wal.record(f"remove_document:{database}/{collection}/{key}")
+        return True
 
     def flush_wal(self) -> dict:
         return self._wal.flush()

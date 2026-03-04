@@ -43,6 +43,84 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(commit_response.status_code, 200)
         self.assertEqual(commit_response.body["result"]["status"], "commit")
 
+    def test_collection_and_document_crud(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/users",
+            api_version=1,
+            body={"name": "alice"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        get_doc = HttpRequest(
+            method="GET",
+            path=f"/_api/document/users/{key}",
+            api_version=1,
+        )
+        get_handler = runtime.handler_factory.create_handler(get_doc)
+        get_response = runtime.handler_factory.invoke(get_handler, get_doc)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["name"], "alice")
+
+    def test_db_prefixed_routes_use_target_database(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant1"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_db/tenant1/_api/collection",
+            api_version=1,
+            body={"name": "events"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_db/tenant1/_api/document/events",
+            api_version=1,
+            body={"kind": "login"},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        get_doc = HttpRequest(
+            method="GET",
+            path=f"/_db/tenant1/_api/document/events/{key}",
+            api_version=1,
+        )
+        get_handler = runtime.handler_factory.create_handler(get_doc)
+        get_response = runtime.handler_factory.invoke(get_handler, get_doc)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["kind"], "login")
+
 
 if __name__ == "__main__":
     unittest.main()
