@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
+from time import perf_counter_ns
+from uuid import uuid4
 
 from deethoughtdb_port.api.errors import ApiError, bad_request, forbidden, unauthorized
 from deethoughtdb_port.domain.auth import AuthService
@@ -10,6 +13,7 @@ from deethoughtdb_port.domain.inmemory import (
     NoopStorageEngine,
 )
 from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
+from deethoughtdb_port.observability import StructuredLogBuffer, ValidationArtifactRecorder
 from deethoughtdb_port.runtime.feature import Feature
 from deethoughtdb_port.runtime.server import ApplicationServer
 from deethoughtdb_port.transport.http_models import HttpRequest, HttpResponse
@@ -148,6 +152,46 @@ class AdminMetricsHandler(RestHandler):
                 "result": {
                     "requestsTotal": self._metrics["requests_total"],
                     "responsesByStatus": self._metrics["responses_by_status"],
+                    "requestsByPath": self._metrics["requests_by_path"],
+                    "latencyByPathMs": self._metrics["latency_by_path_ms"],
+                }
+            },
+        )
+
+
+class AdminSystemReportHandler(RestHandler):
+    def __init__(
+        self,
+        app_server: ApplicationServer,
+        metrics: dict[str, object],
+        logger: StructuredLogBuffer,
+        artifact_recorder: ValidationArtifactRecorder,
+    ) -> None:
+        self._app_server = app_server
+        self._metrics = metrics
+        self._logger = logger
+        self._artifact_recorder = artifact_recorder
+
+    def handle(self, _request: HttpRequest) -> HttpResponse:
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "serverStatus": "running" if self._app_server.is_running else "stopped",
+                    "startupOrder": self._app_server.startup_order,
+                    "metrics": {
+                        "requestsTotal": self._metrics["requests_total"],
+                        "responsesByStatus": self._metrics["responses_by_status"],
+                        "requestsByPath": self._metrics["requests_by_path"],
+                        "latencyByPathMs": self._metrics["latency_by_path_ms"],
+                    },
+                    "logs": {
+                        "count": self._logger.count(),
+                        "recent": self._logger.recent(limit=20),
+                    },
+                    "artifacts": {
+                        "runtimeEventsPath": str(self._artifact_recorder.events_path()),
+                    },
                 }
             },
         )
@@ -217,29 +261,85 @@ class ServerRuntime:
     metrics: dict[str, object]
     replication: ReplicationService
     cluster: ClusterService
+    logger: StructuredLogBuffer
+    artifact_recorder: ValidationArtifactRecorder
 
     def handle_request(self, request: HttpRequest) -> HttpResponse:
+        request_id = uuid4().hex
+        started_ns = perf_counter_ns()
+        principal = "anonymous"
+
         self._record_request()
         try:
-            self._enforce_auth(request)
+            principal = self._enforce_auth(request)
             handler = self.handler_factory.create_handler(request)
             response = self.handler_factory.invoke(handler, request)
         except ApiError as exc:
             response = HttpResponse(status_code=exc.status_code, body=exc.to_payload())
 
-        self._record_response(response.status_code)
+        duration_ms = int((perf_counter_ns() - started_ns) / 1_000_000)
+        self._record_response(request.path, response.status_code, duration_ms)
+        self._record_observability(
+            request_id=request_id,
+            request=request,
+            response=response,
+            duration_ms=duration_ms,
+            principal=principal,
+        )
         return response
 
     def _record_request(self) -> None:
         self.metrics["requests_total"] = int(self.metrics["requests_total"]) + 1
 
-    def _record_response(self, status_code: int) -> None:
+    def _record_response(self, path: str, status_code: int, duration_ms: int) -> None:
         by_status = self.metrics["responses_by_status"]
         by_status[str(status_code)] = by_status.get(str(status_code), 0) + 1
 
-    def _enforce_auth(self, request: HttpRequest) -> None:
+        by_path = self.metrics["requests_by_path"]
+        by_path[path] = by_path.get(path, 0) + 1
+
+        latency = self.metrics["latency_by_path_ms"]
+        entry = latency.get(path, {"count": 0, "totalMs": 0, "avgMs": 0})
+        entry["count"] += 1
+        entry["totalMs"] += duration_ms
+        entry["avgMs"] = round(entry["totalMs"] / entry["count"], 2)
+        latency[path] = entry
+
+    def _record_observability(
+        self,
+        *,
+        request_id: str,
+        request: HttpRequest,
+        response: HttpResponse,
+        duration_ms: int,
+        principal: str,
+    ) -> None:
+        self.logger.emit(
+            "INFO",
+            "http.request",
+            "request handled",
+            requestId=request_id,
+            method=request.method,
+            path=request.path,
+            apiVersion=request.api_version,
+            statusCode=response.status_code,
+            durationMs=duration_ms,
+            principal=principal,
+        )
+
+        self.artifact_recorder.record_request_result(
+            request_id=request_id,
+            method=request.method,
+            path=request.path,
+            api_version=request.api_version,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+            principal=principal,
+        )
+
+    def _enforce_auth(self, request: HttpRequest) -> str:
         if request.path in {"/_api/version", "/_admin/version", "/_open/auth"}:
-            return
+            return "anonymous"
 
         header = request.headers.get("authorization", "")
         prefix = "Bearer "
@@ -254,6 +354,7 @@ class ServerRuntime:
         request.headers["x-principal"] = principal
         if request.path.startswith("/_admin/") and not self.auth.is_admin(principal):
             raise forbidden("admin privileges required")
+        return principal
 
 
 def _handler_ctor(handler_type: type[RestHandler]):
@@ -298,6 +399,18 @@ def _admin_metrics_handler_ctor(metrics: dict[str, object]):
     return _build
 
 
+def _admin_system_report_handler_ctor(
+    app_server: ApplicationServer,
+    metrics: dict[str, object],
+    logger: StructuredLogBuffer,
+    artifact_recorder: ValidationArtifactRecorder,
+):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminSystemReportHandler(app_server, metrics, logger, artifact_recorder)
+
+    return _build
+
+
 def _replication_handler_ctor(replication: ReplicationService):
     def _build(_data: dict | None = None) -> RestHandler:
         return ReplicationHandler(replication)
@@ -312,7 +425,7 @@ def _admin_cluster_handler_ctor(cluster: ClusterService):
     return _build
 
 
-def build_default_server(cluster_enabled: bool = True) -> ServerRuntime:
+def build_default_server(cluster_enabled: bool = True, artifact_dir: str | None = None) -> ServerRuntime:
     app_server = ApplicationServer()
     app_server.register_feature(Feature(name="Config"))
     app_server.register_feature(Feature(name="Network", depends_on={"Config"}))
@@ -329,7 +442,13 @@ def build_default_server(cluster_enabled: bool = True) -> ServerRuntime:
     metrics: dict[str, object] = {
         "requests_total": 0,
         "responses_by_status": {},
+        "requests_by_path": {},
+        "latency_by_path_ms": {},
     }
+    logger = StructuredLogBuffer()
+    recorder = ValidationArtifactRecorder(
+        base_dir=Path(artifact_dir) if artifact_dir else Path("artifacts/validation/runtime")
+    )
 
     catalog.create_database("_system")
 
@@ -338,6 +457,11 @@ def build_default_server(cluster_enabled: bool = True) -> ServerRuntime:
     handler_factory.add_handler("/_admin/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/status", _admin_status_handler_ctor(app_server), [1, 2])
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
+    handler_factory.add_handler(
+        "/_admin/system-report",
+        _admin_system_report_handler_ctor(app_server, metrics, logger, recorder),
+        [1, 2],
+    )
     handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])
     handler_factory.add_handler("/_open/auth", _open_auth_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler(
@@ -364,4 +488,6 @@ def build_default_server(cluster_enabled: bool = True) -> ServerRuntime:
         metrics=metrics,
         replication=replication,
         cluster=cluster,
+        logger=logger,
+        artifact_recorder=recorder,
     )
