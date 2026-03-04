@@ -35,6 +35,20 @@ class VersionHandler(RestHandler):
         )
 
 
+class AqlDisabledHandler(RestHandler):
+    def handle(self, _request: HttpRequest) -> HttpResponse:
+        return HttpResponse(
+            status_code=501,
+            body={
+                "error": True,
+                "code": 501,
+                "errorNum": 501,
+                "errorMessage": "AQL/query endpoints are disabled in this port phase",
+                "capability": "aql-disabled",
+            },
+        )
+
+
 class CatchAllHandler(RestHandler):
     def handle(self, request: HttpRequest) -> HttpResponse:
         return HttpResponse(
@@ -1336,6 +1350,10 @@ def build_default_server(
 
     handler_factory = RestHandlerFactory(max_api_version=2)
     handler_factory.add_handler("/_api/version", _handler_ctor(VersionHandler), [1, 2])
+    handler_factory.add_prefix_handler("/_api/aql", _handler_ctor(AqlDisabledHandler), [1, 2])
+    handler_factory.add_prefix_handler("/_api/query", _handler_ctor(AqlDisabledHandler), [1, 2])
+    handler_factory.add_prefix_handler("/_api/cursor", _handler_ctor(AqlDisabledHandler), [1, 2])
+    handler_factory.add_prefix_handler("/_api/explain", _handler_ctor(AqlDisabledHandler), [1, 2])
     handler_factory.add_handler("/_admin/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/status", _admin_status_handler_ctor(app_server), [1, 2])
     handler_factory.add_handler("/_admin/time", _admin_time_handler_ctor(), [1, 2])
