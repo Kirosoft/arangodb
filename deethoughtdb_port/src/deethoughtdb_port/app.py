@@ -804,6 +804,45 @@ class AdminStatisticsHandler(RestHandler):
         )
 
 
+class AdminStatisticsDescriptionHandler(RestHandler):
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/statistics-description expects GET")
+
+        return HttpResponse(
+            status_code=200,
+            body={
+                "groups": {
+                    "system": {
+                        "name": "system",
+                        "description": "General server runtime metrics",
+                    },
+                    "http": {
+                        "name": "http",
+                        "description": "HTTP request and response counters",
+                    },
+                },
+                "figures": {
+                    "requestsTotal": {
+                        "group": "http",
+                        "description": "Total number of handled requests",
+                        "type": "number",
+                    },
+                    "responsesByStatus": {
+                        "group": "http",
+                        "description": "Response counters by status code",
+                        "type": "object",
+                    },
+                    "pathsTracked": {
+                        "group": "http",
+                        "description": "Number of request paths tracked in metrics",
+                        "type": "number",
+                    },
+                },
+            },
+        )
+
+
 class AdminOptionsHandler(RestHandler):
     def handle(self, request: HttpRequest) -> HttpResponse:
         if request.method != "GET":
@@ -1375,6 +1414,13 @@ def _admin_statistics_handler_ctor(metrics: dict[str, object]):
     return _build
 
 
+def _admin_statistics_description_handler_ctor():
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminStatisticsDescriptionHandler()
+
+    return _build
+
+
 def _admin_options_handler_ctor():
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminOptionsHandler()
@@ -1547,6 +1593,11 @@ def build_default_server(
     handler_factory.add_handler(
         "/_admin/statistics",
         _admin_statistics_handler_ctor(metrics),
+        [1, 2],
+    )
+    handler_factory.add_handler(
+        "/_admin/statistics-description",
+        _admin_statistics_description_handler_ctor(),
         [1, 2],
     )
     handler_factory.add_handler("/_admin/options", _admin_options_handler_ctor(), [1, 2])

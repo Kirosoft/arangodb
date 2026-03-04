@@ -166,6 +166,18 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertIn("requestsTotal", statistics_response.body["result"])
         self.assertIn("pathsTracked", statistics_response.body["result"])
 
+        statistics_description_request = HttpRequest(
+            method="GET",
+            path="/_admin/statistics-description",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        statistics_description_response = runtime.handle_request(statistics_description_request)
+        self.assertEqual(statistics_description_response.status_code, 200)
+        self.assertIn("groups", statistics_description_response.body)
+        self.assertIn("figures", statistics_description_response.body)
+        self.assertIn("requestsTotal", statistics_description_response.body["figures"])
+
         options_request = HttpRequest(
             method="GET",
             path="/_admin/options",
