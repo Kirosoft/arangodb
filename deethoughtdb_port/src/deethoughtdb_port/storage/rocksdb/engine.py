@@ -84,6 +84,18 @@ class RocksDBEnginePort(StorageEngineContract):
         collections = self._catalog.collections.get(database, {})
         return sorted(collections.values(), key=lambda item: item["id"])
 
+    def get_collection(self, database: str, name: str) -> dict | None:
+        collection = self._catalog.collections.get(database, {}).get(name)
+        if collection is None:
+            return None
+        return dict(collection)
+
+    def count_documents(self, database: str, collection: str) -> int:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None:
+            return 0
+        return len(documents)
+
     def drop_collection(self, database: str, name: str) -> None:
         self._catalog.drop_collection(database, name)
         if database in self._documents:

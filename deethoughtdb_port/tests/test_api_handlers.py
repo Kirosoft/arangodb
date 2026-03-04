@@ -127,6 +127,42 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["name"], "alice")
 
+    def test_collection_detail_and_count(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "countable"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        for value in [1, 2]:
+            insert_doc = HttpRequest(
+                method="POST",
+                path="/_api/document/countable",
+                api_version=1,
+                body={"value": value},
+            )
+            insert_handler = runtime.handler_factory.create_handler(insert_doc)
+            insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+            self.assertEqual(insert_response.status_code, 201)
+
+        detail_request = HttpRequest(method="GET", path="/_api/collection/countable", api_version=1)
+        detail_handler = runtime.handler_factory.create_handler(detail_request)
+        detail_response = runtime.handler_factory.invoke(detail_handler, detail_request)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.body["result"]["name"], "countable")
+
+        count_request = HttpRequest(method="GET", path="/_api/collection/countable/count", api_version=1)
+        count_handler = runtime.handler_factory.create_handler(count_request)
+        count_response = runtime.handler_factory.invoke(count_handler, count_request)
+        self.assertEqual(count_response.status_code, 200)
+        self.assertEqual(count_response.body["result"]["count"], 2)
+
     def test_document_put_and_patch(self) -> None:
         runtime = build_default_server()
 
@@ -375,6 +411,16 @@ class ApiHandlerTests(unittest.TestCase):
         get_response = runtime.handler_factory.invoke(get_handler, get_doc)
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["kind"], "login")
+
+        count_request = HttpRequest(
+            method="GET",
+            path="/_db/tenant1/_api/collection/events/count",
+            api_version=1,
+        )
+        count_handler = runtime.handler_factory.create_handler(count_request)
+        count_response = runtime.handler_factory.invoke(count_handler, count_request)
+        self.assertEqual(count_response.status_code, 200)
+        self.assertEqual(count_response.body["result"]["count"], 1)
 
     def test_db_prefixed_document_patch(self) -> None:
         runtime = build_default_server()

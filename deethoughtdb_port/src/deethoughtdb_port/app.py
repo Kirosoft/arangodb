@@ -119,6 +119,42 @@ class CollectionHandler(RestHandler):
         database = _resolve_database_from_path(request)
 
         if request.method == "GET":
+            if len(request.suffixes) == 1:
+                collection = self._storage.get_collection(database, request.suffixes[0])
+                if collection is None:
+                    return HttpResponse(
+                        status_code=404,
+                        body={
+                            "error": True,
+                            "code": 404,
+                            "errorNum": 404,
+                            "errorMessage": f"collection '{request.suffixes[0]}' not found",
+                        },
+                    )
+                return HttpResponse(status_code=200, body={"result": collection})
+
+            if len(request.suffixes) == 2 and request.suffixes[1] == "count":
+                collection = self._storage.get_collection(database, request.suffixes[0])
+                if collection is None:
+                    return HttpResponse(
+                        status_code=404,
+                        body={
+                            "error": True,
+                            "code": 404,
+                            "errorNum": 404,
+                            "errorMessage": f"collection '{request.suffixes[0]}' not found",
+                        },
+                    )
+                return HttpResponse(
+                    status_code=200,
+                    body={
+                        "result": {
+                            "name": request.suffixes[0],
+                            "count": self._storage.count_documents(database, request.suffixes[0]),
+                        }
+                    },
+                )
+
             return HttpResponse(
                 status_code=200,
                 body={"result": self._storage.list_collections(database)},

@@ -50,6 +50,14 @@ class StorageEngineContract(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_collection(self, database: str, name: str) -> dict | None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def count_documents(self, database: str, collection: str) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
     def drop_collection(self, database: str, name: str) -> None:
         raise NotImplementedError
 
