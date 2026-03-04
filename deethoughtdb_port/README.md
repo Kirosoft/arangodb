@@ -32,11 +32,21 @@ Required environment variables:
 - `DTH_ARANGO_PASSWORD=<root-password>`
 - optional: `DTH_ARANGO_URL` (default `http://127.0.0.1:8529`)
 - optional: `DTH_ARANGO_USER` (default `root`)
+- optional: `DTH_STRICT_LIVE_ROCKSDB=1` (fail instead of skip if live test prerequisites are missing)
 
 Run:
 
 ```bash
 cd deethoughtdb_port
+python -m unittest tests.test_live_rocksdb_integration -v
+```
+
+Strict CI mode (fail if live prerequisites are missing):
+
+```bash
+export DTH_STRICT_LIVE_ROCKSDB=1
+export DTH_LIVE_ROCKSDB=1
+export DTH_ARANGO_PASSWORD=<root-password>
 python -m unittest tests.test_live_rocksdb_integration -v
 ```
 
@@ -54,3 +64,18 @@ Example local `arangod` launch (single server):
 ```bash
 arangod --server.endpoint tcp://127.0.0.1:8529 --server.authentication true --database.directory <path>
 ```
+
+## Validation runner (phase gate artifact output)
+
+Run gate-oriented validation and emit artifacts under `deethoughtdb_port/artifacts/validation/gate-runner`:
+
+```bash
+cd deethoughtdb_port
+python tools/validation_runner.py
+```
+
+Generated files include:
+
+- `summary.json`
+- `<suite>.stdout.log`
+- `<suite>.stderr.log`

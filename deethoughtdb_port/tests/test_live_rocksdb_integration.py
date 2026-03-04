@@ -7,6 +7,26 @@ import urllib.parse
 import urllib.request
 
 
+def _require_live_mode() -> tuple[bool, str, str, str | None, bool]:
+    enabled = os.getenv("DTH_LIVE_ROCKSDB", "0") == "1"
+    strict = os.getenv("DTH_STRICT_LIVE_ROCKSDB", "0") == "1"
+
+    base_url = os.getenv("DTH_ARANGO_URL", "http://127.0.0.1:8529")
+    username = os.getenv("DTH_ARANGO_USER", "root")
+    password = os.getenv("DTH_ARANGO_PASSWORD")
+
+    if strict and not enabled:
+        raise AssertionError(
+            "Strict live mode requires DTH_LIVE_ROCKSDB=1 so tests are executed"
+        )
+    if strict and not password:
+        raise AssertionError(
+            "Strict live mode requires DTH_ARANGO_PASSWORD to run live tests"
+        )
+
+    return enabled, base_url, username, password, strict
+
+
 class LiveArangoHttpClient:
     def __init__(self, base_url: str, username: str, password: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -59,12 +79,11 @@ class LiveArangoHttpClient:
 class LiveRocksDBIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        if os.getenv("DTH_LIVE_ROCKSDB", "0") != "1":
+        enabled, base_url, username, password, _strict = _require_live_mode()
+
+        if not enabled:
             raise unittest.SkipTest("Set DTH_LIVE_ROCKSDB=1 to run live RocksDB integration tests")
 
-        base_url = os.getenv("DTH_ARANGO_URL", "http://127.0.0.1:8529")
-        username = os.getenv("DTH_ARANGO_USER", "root")
-        password = os.getenv("DTH_ARANGO_PASSWORD")
         if not password:
             raise unittest.SkipTest("Set DTH_ARANGO_PASSWORD for live integration tests")
 
