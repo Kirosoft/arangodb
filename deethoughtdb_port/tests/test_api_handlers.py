@@ -5,6 +5,16 @@ from deethoughtdb_port.transport.http_models import HttpRequest
 
 
 class ApiHandlerTests(unittest.TestCase):
+    def test_version_reports_capability_metadata(self) -> None:
+        runtime = build_default_server()
+
+        request = HttpRequest(method="GET", path="/_api/version", api_version=1)
+        handler = runtime.handler_factory.create_handler(request)
+        response = runtime.handler_factory.invoke(handler, request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.body["details"]["engine"], "rocksdb")
+        self.assertFalse(response.body["details"]["aql"])
+
     def test_aql_endpoints_are_explicitly_disabled(self) -> None:
         runtime = build_default_server()
 

@@ -143,6 +143,26 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertIn("requestsTotal", statistics_response.body["result"])
         self.assertIn("pathsTracked", statistics_response.body["result"])
 
+        options_request = HttpRequest(
+            method="GET",
+            path="/_admin/options",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        options_response = runtime.handle_request(options_request)
+        self.assertEqual(options_response.status_code, 200)
+        self.assertIn("server.authentication", options_response.body["result"])
+
+        options_desc_request = HttpRequest(
+            method="GET",
+            path="/_admin/options-description",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        options_desc_response = runtime.handle_request(options_desc_request)
+        self.assertEqual(options_desc_response.status_code, 200)
+        self.assertIn("server.authentication", options_desc_response.body["result"])
+
     def test_admin_shutdown_changes_status(self) -> None:
         runtime = build_default_server()
 

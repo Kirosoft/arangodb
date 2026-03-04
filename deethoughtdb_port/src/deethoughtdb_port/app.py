@@ -31,6 +31,11 @@ class VersionHandler(RestHandler):
                 "server": "deethoughtdb",
                 "apiVersion": request.api_version,
                 "path": request.path,
+                "details": {
+                    "engine": "rocksdb",
+                    "aql": False,
+                    "phase": "backend-port",
+                },
             },
         )
 
@@ -721,6 +726,47 @@ class AdminStatisticsHandler(RestHandler):
         )
 
 
+class AdminOptionsHandler(RestHandler):
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/options expects GET")
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "server.authentication": True,
+                    "database.force-sync-properties": False,
+                    "rocksdb.sync-interval": 1000,
+                }
+            },
+        )
+
+
+class AdminOptionsDescriptionHandler(RestHandler):
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/options-description expects GET")
+        return HttpResponse(
+            status_code=200,
+            body={
+                "result": {
+                    "server.authentication": {
+                        "type": "boolean",
+                        "description": "Enable or disable authentication",
+                    },
+                    "database.force-sync-properties": {
+                        "type": "boolean",
+                        "description": "Force sync for database property writes",
+                    },
+                    "rocksdb.sync-interval": {
+                        "type": "number",
+                        "description": "WAL sync interval in milliseconds",
+                    },
+                }
+            },
+        )
+
+
 class AdminSystemReportHandler(RestHandler):
     def __init__(
         self,
@@ -1251,6 +1297,20 @@ def _admin_statistics_handler_ctor(metrics: dict[str, object]):
     return _build
 
 
+def _admin_options_handler_ctor():
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminOptionsHandler()
+
+    return _build
+
+
+def _admin_options_description_handler_ctor():
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminOptionsDescriptionHandler()
+
+    return _build
+
+
 def _admin_system_report_handler_ctor(
     app_server: ApplicationServer,
     metrics: dict[str, object],
@@ -1409,6 +1469,12 @@ def build_default_server(
     handler_factory.add_handler(
         "/_admin/statistics",
         _admin_statistics_handler_ctor(metrics),
+        [1, 2],
+    )
+    handler_factory.add_handler("/_admin/options", _admin_options_handler_ctor(), [1, 2])
+    handler_factory.add_handler(
+        "/_admin/options-description",
+        _admin_options_description_handler_ctor(),
         [1, 2],
     )
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
