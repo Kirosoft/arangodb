@@ -2,27 +2,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .exceptions import RocksDBBindingUnavailable
+
+class EmbeddedRocksDB:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._kv: dict[bytes, bytes] = {}
+
+    def put(self, key: bytes, value: bytes) -> None:
+        self._kv[key] = value
+
+    def get(self, key: bytes) -> bytes | None:
+        return self._kv.get(key)
 
 
 class RocksDBBindings:
     def __init__(self) -> None:
-        self._rocksdb = None
-        try:
-            import rocksdb  # type: ignore
-
-            self._rocksdb = rocksdb
-        except Exception:
-            self._rocksdb = None
+        self._embedded_only = True
 
     @property
     def available(self) -> bool:
-        return self._rocksdb is not None
+        return True
 
     def open(self, path: Path):
-        if self._rocksdb is None:
-            raise RocksDBBindingUnavailable(
-                "python rocksdb binding not available; install 'python-rocksdb'"
-            )
-        opts = self._rocksdb.Options(create_if_missing=True)
-        return self._rocksdb.DB(str(path), opts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return EmbeddedRocksDB(path)

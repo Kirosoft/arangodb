@@ -7,6 +7,13 @@ This package contains the initial implementation for the `plan.md` Phases 2-3:
 - standardized backend API error envelope
 - domain service interfaces for catalog/storage/transactions
 
+## Dependency and output boundary
+
+- No non-stdlib Python dependencies are required by `deethoughtdb_port` runtime code.
+- Default runtime outputs are constrained to `deethoughtdb_port/artifacts/**`.
+- A dependency-boundary test enforces no imports outside stdlib + local package:
+	- `tests/test_dependency_boundary.py`
+
 ## Quick start
 
 ```bash

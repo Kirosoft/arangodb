@@ -427,11 +427,19 @@ def _admin_cluster_handler_ctor(cluster: ClusterService):
     return _build
 
 
+def _port_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def build_default_server(
     cluster_enabled: bool = True,
     artifact_dir: str | None = None,
     rocksdb_root: str | None = None,
 ) -> ServerRuntime:
+    port_root = _port_root()
+    default_rocksdb_root = port_root / "artifacts" / "rocksdb"
+    default_validation_dir = port_root / "artifacts" / "validation" / "runtime"
+
     app_server = ApplicationServer()
     app_server.register_feature(Feature(name="Config"))
     app_server.register_feature(Feature(name="Network", depends_on={"Config"}))
@@ -440,7 +448,7 @@ def build_default_server(
     catalog = InMemoryCatalogService()
     transaction_manager = InMemoryTransactionManager()
     storage_engine = RocksDBEnginePort(
-        RocksDBPortConfig.from_root(rocksdb_root or "artifacts/rocksdb")
+        RocksDBPortConfig.from_root(rocksdb_root or default_rocksdb_root)
     )
     auth = AuthService()
     auth.create_user("root", "deethoughtdb", is_admin=True)
@@ -455,7 +463,7 @@ def build_default_server(
     }
     logger = StructuredLogBuffer()
     recorder = ValidationArtifactRecorder(
-        base_dir=Path(artifact_dir) if artifact_dir else Path("artifacts/validation/runtime")
+        base_dir=Path(artifact_dir) if artifact_dir else default_validation_dir
     )
 
     catalog.create_database("_system")
