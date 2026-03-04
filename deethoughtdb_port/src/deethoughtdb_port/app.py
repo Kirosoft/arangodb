@@ -9,6 +9,7 @@ from deethoughtdb_port.domain.inmemory import (
     InMemoryTransactionManager,
     NoopStorageEngine,
 )
+from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
 from deethoughtdb_port.runtime.feature import Feature
 from deethoughtdb_port.runtime.server import ApplicationServer
 from deethoughtdb_port.transport.http_models import HttpRequest, HttpResponse
@@ -152,6 +153,59 @@ class AdminMetricsHandler(RestHandler):
         )
 
 
+class ReplicationHandler(RestHandler):
+    def __init__(self, replication: ReplicationService) -> None:
+        self._replication = replication
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method == "GET" and request.path == "/_api/replication/state":
+            state = self._replication.state()
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "mode": state.mode,
+                        "applierEnabled": state.applier_enabled,
+                        "lastTick": state.last_tick,
+                    }
+                },
+            )
+
+        if request.path == "/_api/replication/applier-config":
+            if request.method == "GET":
+                return HttpResponse(
+                    status_code=200,
+                    body={"result": self._replication.applier_config()},
+                )
+            if request.method == "PUT":
+                if not isinstance(request.body, dict):
+                    raise bad_request("replication applier config expects JSON object")
+                updated = self._replication.update_applier_config(request.body)
+                return HttpResponse(status_code=200, body={"result": updated})
+
+        raise bad_request("unsupported replication path")
+
+
+class AdminClusterHandler(RestHandler):
+    def __init__(self, cluster: ClusterService) -> None:
+        self._cluster = cluster
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if not self._cluster.enabled:
+            raise bad_request("cluster API not enabled")
+
+        if request.method == "GET" and request.path == "/_admin/cluster/health":
+            return HttpResponse(status_code=200, body={"result": self._cluster.health()})
+
+        if request.method == "GET" and request.path == "/_admin/cluster/role":
+            return HttpResponse(
+                status_code=200,
+                body={"result": {"role": self._cluster.role()}},
+            )
+
+        raise bad_request("unsupported cluster path")
+
+
 @dataclass(slots=True)
 class ServerRuntime:
     app_server: ApplicationServer
@@ -161,6 +215,8 @@ class ServerRuntime:
     storage_engine: NoopStorageEngine
     auth: AuthService
     metrics: dict[str, object]
+    replication: ReplicationService
+    cluster: ClusterService
 
     def handle_request(self, request: HttpRequest) -> HttpResponse:
         self._record_request()
@@ -242,7 +298,21 @@ def _admin_metrics_handler_ctor(metrics: dict[str, object]):
     return _build
 
 
-def build_default_server() -> ServerRuntime:
+def _replication_handler_ctor(replication: ReplicationService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return ReplicationHandler(replication)
+
+    return _build
+
+
+def _admin_cluster_handler_ctor(cluster: ClusterService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminClusterHandler(cluster)
+
+    return _build
+
+
+def build_default_server(cluster_enabled: bool = True) -> ServerRuntime:
     app_server = ApplicationServer()
     app_server.register_feature(Feature(name="Config"))
     app_server.register_feature(Feature(name="Network", depends_on={"Config"}))
@@ -253,6 +323,8 @@ def build_default_server() -> ServerRuntime:
     storage_engine = NoopStorageEngine()
     auth = AuthService()
     auth.create_user("root", "deethoughtdb", is_admin=True)
+    replication = ReplicationService(mode="cluster" if cluster_enabled else "single")
+    cluster = ClusterService(role="coordinator" if cluster_enabled else "single", enabled=cluster_enabled)
 
     metrics: dict[str, object] = {
         "requests_total": 0,
@@ -266,12 +338,16 @@ def build_default_server() -> ServerRuntime:
     handler_factory.add_handler("/_admin/version", _handler_ctor(VersionHandler), [1, 2])
     handler_factory.add_handler("/_admin/status", _admin_status_handler_ctor(app_server), [1, 2])
     handler_factory.add_prefix_handler("/_admin/metrics", _admin_metrics_handler_ctor(metrics), [1, 2])
+    handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])
     handler_factory.add_handler("/_open/auth", _open_auth_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler(
         "/_api/database", _database_handler_ctor(catalog), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/transaction", _transaction_handler_ctor(transaction_manager), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/replication", _replication_handler_ctor(replication), [1, 2]
     )
     handler_factory.add_prefix_handler("/", _handler_ctor(CatchAllHandler), [1, 2])
     handler_factory.seal()
@@ -286,4 +362,6 @@ def build_default_server() -> ServerRuntime:
         storage_engine=storage_engine,
         auth=auth,
         metrics=metrics,
+        replication=replication,
+        cluster=cluster,
     )
