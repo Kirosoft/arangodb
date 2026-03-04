@@ -8,6 +8,7 @@ from uuid import uuid4
 from deethoughtdb_port.api.errors import ApiError, bad_request, forbidden, unauthorized
 from deethoughtdb_port.domain.auth import AuthService
 from deethoughtdb_port.domain.inmemory import (
+    InMemoryJobManager,
     InMemoryTransactionManager,
 )
 from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
@@ -493,6 +494,59 @@ class WalHandler(RestHandler):
         raise bad_request("unsupported wal path")
 
 
+class JobHandler(RestHandler):
+    def __init__(self, jobs: InMemoryJobManager) -> None:
+        self._jobs = jobs
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method == "POST" and len(request.suffixes) == 0:
+            payload = request.body if isinstance(request.body, dict) else {}
+            job = self._jobs.create(payload=payload)
+            return HttpResponse(status_code=202, body={"result": job})
+
+        if request.method == "GET" and len(request.suffixes) == 0:
+            return HttpResponse(status_code=200, body={"result": self._jobs.list_ids()})
+
+        if request.method == "GET" and len(request.suffixes) == 1 and request.suffixes[0] in {
+            "done",
+            "pending",
+        }:
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._jobs.list_ids(status=request.suffixes[0])},
+            )
+
+        if request.method == "GET" and len(request.suffixes) == 1:
+            job = self._jobs.get(request.suffixes[0])
+            if job is None:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"job '{request.suffixes[0]}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": job})
+
+        if request.method == "DELETE" and len(request.suffixes) == 1:
+            removed = self._jobs.delete(request.suffixes[0])
+            if not removed:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"job '{request.suffixes[0]}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": {"id": request.suffixes[0], "deleted": True}})
+
+        raise bad_request("unsupported job path")
+
+
 class AdminClusterHandler(RestHandler):
     def __init__(self, cluster: ClusterService) -> None:
         self._cluster = cluster
@@ -572,6 +626,7 @@ class ServerRuntime:
     app_server: ApplicationServer
     handler_factory: RestHandlerFactory
     transaction_manager: InMemoryTransactionManager
+    job_manager: InMemoryJobManager
     storage_engine: RocksDBEnginePort
     auth: AuthService
     metrics: dict[str, object]
@@ -755,6 +810,13 @@ def _wal_handler_ctor(storage: RocksDBEnginePort):
     return _build
 
 
+def _job_handler_ctor(jobs: InMemoryJobManager):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return JobHandler(jobs)
+
+    return _build
+
+
 def _admin_cluster_handler_ctor(cluster: ClusterService):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminClusterHandler(cluster)
@@ -816,6 +878,7 @@ def build_default_server(
     app_server.register_feature(Feature(name="Rest", depends_on={"Network"}))
 
     transaction_manager = InMemoryTransactionManager()
+    job_manager = InMemoryJobManager()
     storage_engine = RocksDBEnginePort(
         RocksDBPortConfig.from_root(rocksdb_root or default_rocksdb_root)
     )
@@ -875,6 +938,7 @@ def build_default_server(
     handler_factory.add_prefix_handler(
         "/_api/wal", _wal_handler_ctor(storage_engine), [1, 2]
     )
+    handler_factory.add_prefix_handler("/_api/job", _job_handler_ctor(job_manager), [1, 2])
     handler_factory.add_prefix_handler(
         "/_db", _db_prefixed_api_handler_ctor(storage_engine, transaction_manager), [1, 2]
     )
@@ -887,6 +951,7 @@ def build_default_server(
         app_server=app_server,
         handler_factory=handler_factory,
         transaction_manager=transaction_manager,
+        job_manager=job_manager,
         storage_engine=storage_engine,
         auth=auth,
         metrics=metrics,

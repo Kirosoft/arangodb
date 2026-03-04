@@ -61,6 +61,37 @@ class InMemoryTransactionManager(TransactionManager):
         self._active.remove(transaction_id)
 
 
+class InMemoryJobManager:
+    def __init__(self) -> None:
+        self._jobs: dict[str, dict] = {}
+
+    def create(self, payload: dict | None = None, status: str = "done") -> dict:
+        job_id = uuid.uuid4().hex
+        job = {
+            "id": job_id,
+            "status": status,
+            "payload": dict(payload or {}),
+        }
+        self._jobs[job_id] = job
+        return dict(job)
+
+    def get(self, job_id: str) -> dict | None:
+        job = self._jobs.get(job_id)
+        if job is None:
+            return None
+        return dict(job)
+
+    def list_ids(self, status: str | None = None) -> list[str]:
+        jobs = self._jobs.values()
+        if status is not None:
+            jobs = [job for job in jobs if job.get("status") == status]
+        return [str(job["id"]) for job in jobs]
+
+    def delete(self, job_id: str) -> bool:
+        removed = self._jobs.pop(job_id, None)
+        return removed is not None
+
+
 class NoopStorageEngine(StorageEngine):
     def health_check(self) -> dict:
         return {"status": "ok"}

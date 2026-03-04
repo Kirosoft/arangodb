@@ -308,6 +308,43 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(flush_response.status_code, 200)
         self.assertIn("tick", flush_response.body["result"])
 
+    def test_job_api_lifecycle(self) -> None:
+        runtime = build_default_server()
+
+        create_job = HttpRequest(
+            method="POST",
+            path="/_api/job",
+            api_version=1,
+            body={"name": "sample"},
+        )
+        create_handler = runtime.handler_factory.create_handler(create_job)
+        create_response = runtime.handler_factory.invoke(create_handler, create_job)
+        self.assertEqual(create_response.status_code, 202)
+        job_id = create_response.body["result"]["id"]
+
+        list_jobs = HttpRequest(method="GET", path="/_api/job", api_version=1)
+        list_handler = runtime.handler_factory.create_handler(list_jobs)
+        list_response = runtime.handler_factory.invoke(list_handler, list_jobs)
+        self.assertEqual(list_response.status_code, 200)
+        self.assertIn(job_id, list_response.body["result"])
+
+        get_job = HttpRequest(method="GET", path=f"/_api/job/{job_id}", api_version=1)
+        get_handler = runtime.handler_factory.create_handler(get_job)
+        get_response = runtime.handler_factory.invoke(get_handler, get_job)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["payload"]["name"], "sample")
+
+        done_jobs = HttpRequest(method="GET", path="/_api/job/done", api_version=1)
+        done_handler = runtime.handler_factory.create_handler(done_jobs)
+        done_response = runtime.handler_factory.invoke(done_handler, done_jobs)
+        self.assertEqual(done_response.status_code, 200)
+        self.assertIn(job_id, done_response.body["result"])
+
+        delete_job = HttpRequest(method="DELETE", path=f"/_api/job/{job_id}", api_version=1)
+        delete_handler = runtime.handler_factory.create_handler(delete_job)
+        delete_response = runtime.handler_factory.invoke(delete_handler, delete_job)
+        self.assertEqual(delete_response.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
