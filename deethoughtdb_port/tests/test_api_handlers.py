@@ -54,6 +54,25 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(commit_response.status_code, 200)
         self.assertEqual(commit_response.body["result"]["status"], "commit")
 
+    def test_transaction_begin_and_put_commit(self) -> None:
+        runtime = build_default_server()
+
+        begin_request = HttpRequest(method="POST", path="/_api/transaction/begin", api_version=1)
+        begin_handler = runtime.handler_factory.create_handler(begin_request)
+        begin_response = runtime.handler_factory.invoke(begin_handler, begin_request)
+        self.assertEqual(begin_response.status_code, 201)
+        transaction_id = begin_response.body["result"]["id"]
+
+        put_commit = HttpRequest(
+            method="PUT",
+            path=f"/_api/transaction/{transaction_id}",
+            api_version=1,
+        )
+        put_handler = runtime.handler_factory.create_handler(put_commit)
+        put_response = runtime.handler_factory.invoke(put_handler, put_commit)
+        self.assertEqual(put_response.status_code, 200)
+        self.assertEqual(put_response.body["result"]["status"], "commit")
+
     def test_collection_and_document_crud(self) -> None:
         runtime = build_default_server()
 
@@ -131,6 +150,29 @@ class ApiHandlerTests(unittest.TestCase):
         get_response = runtime.handler_factory.invoke(get_handler, get_doc)
         self.assertEqual(get_response.status_code, 200)
         self.assertEqual(get_response.body["result"]["kind"], "login")
+
+    def test_db_prefixed_transaction_put_commit(self) -> None:
+        runtime = build_default_server()
+
+        begin = HttpRequest(
+            method="POST",
+            path="/_db/_system/_api/transaction/begin",
+            api_version=1,
+        )
+        begin_handler = runtime.handler_factory.create_handler(begin)
+        begin_response = runtime.handler_factory.invoke(begin_handler, begin)
+        self.assertEqual(begin_response.status_code, 201)
+        transaction_id = begin_response.body["result"]["id"]
+
+        put_commit = HttpRequest(
+            method="PUT",
+            path=f"/_db/_system/_api/transaction/{transaction_id}",
+            api_version=1,
+        )
+        put_handler = runtime.handler_factory.create_handler(put_commit)
+        put_response = runtime.handler_factory.invoke(put_handler, put_commit)
+        self.assertEqual(put_response.status_code, 200)
+        self.assertEqual(put_response.body["result"]["status"], "commit")
 
     def test_insert_document_without_collection_returns_api_error(self) -> None:
         runtime = build_default_server()

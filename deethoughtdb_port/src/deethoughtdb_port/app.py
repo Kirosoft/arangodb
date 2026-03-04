@@ -264,14 +264,22 @@ class TransactionHandler(RestHandler):
         self._manager = manager
 
     def handle(self, request: HttpRequest) -> HttpResponse:
-        if request.method != "POST":
-            raise bad_request("transaction API expects POST")
-
-        if request.path == "/_api/transaction/begin":
+        if request.method == "POST" and request.path == "/_api/transaction/begin":
             transaction_id = self._manager.begin()
             return HttpResponse(status_code=201, body={"result": {"id": transaction_id}})
 
-        if (
+        if request.method == "PUT" and request.prefix == "/_api/transaction" and len(request.suffixes) == 1:
+            transaction_id = request.suffixes[0]
+            try:
+                self._manager.commit(transaction_id)
+            except KeyError as exc:
+                raise bad_request(f"unknown transaction id '{transaction_id}'") from exc
+            return HttpResponse(
+                status_code=200,
+                body={"result": {"id": transaction_id, "status": "commit"}},
+            )
+
+        if request.method == "POST" and (
             request.prefix == "/_api/transaction"
             and len(request.suffixes) == 2
             and request.suffixes[1] in {"commit", "abort"}
@@ -635,7 +643,7 @@ class DbPrefixedApiHandler(RestHandler):
             api_version=request.api_version,
             headers=request.headers,
             body=request.body,
-            prefix=request.prefix,
+            prefix="/_api/" + resource,
             suffixes=suffixes[3:],
         )
         delegated.headers["x-database"] = database
