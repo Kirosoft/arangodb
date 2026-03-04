@@ -311,6 +311,59 @@ class OpenAuthHandler(RestHandler):
         return HttpResponse(status_code=200, body={"result": {"token": token}})
 
 
+class UserHandler(RestHandler):
+    def __init__(self, auth: AuthService) -> None:
+        self._auth = auth
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        principal = request.headers.get("x-principal", "")
+        if not principal or not self._auth.is_admin(principal):
+            raise forbidden("admin privileges required")
+
+        if request.method == "GET" and len(request.suffixes) == 0:
+            return HttpResponse(status_code=200, body={"result": self._auth.list_users()})
+
+        if request.method == "POST" and len(request.suffixes) == 0:
+            if not isinstance(request.body, dict):
+                raise bad_request("user creation expects JSON object")
+            username = str(request.body.get("user", ""))
+            password = str(request.body.get("passwd", ""))
+            if not username or not password:
+                raise bad_request("user creation expects 'user' and 'passwd'")
+            is_admin = bool(request.body.get("isAdmin", False))
+            self._auth.create_user(username, password, is_admin=is_admin)
+            return HttpResponse(
+                status_code=201,
+                body={
+                    "result": {
+                        "user": username,
+                        "active": True,
+                        "extra": {},
+                        "isAdmin": is_admin,
+                    }
+                },
+            )
+
+        if request.method == "DELETE" and len(request.suffixes) == 1:
+            username = request.suffixes[0]
+            if username == "root":
+                raise bad_request("cannot delete root user")
+            removed = self._auth.remove_user(username)
+            if not removed:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"user '{username}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": {"user": username, "deleted": True}})
+
+        raise bad_request("unsupported user path")
+
+
 class AdminStatusHandler(RestHandler):
     def __init__(self, app_server: ApplicationServer) -> None:
         self._app_server = app_server
@@ -655,6 +708,13 @@ def _open_auth_handler_ctor(auth: AuthService):
     return _build
 
 
+def _user_handler_ctor(auth: AuthService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return UserHandler(auth)
+
+    return _build
+
+
 def _admin_status_handler_ctor(app_server: ApplicationServer):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminStatusHandler(app_server)
@@ -789,6 +849,7 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])
     handler_factory.add_handler("/_open/auth", _open_auth_handler_ctor(auth), [1, 2])
+    handler_factory.add_prefix_handler("/_api/user", _user_handler_ctor(auth), [1, 2])
     handler_factory.add_prefix_handler(
         "/_api/database", _database_handler_ctor(storage_engine), [1, 2]
     )

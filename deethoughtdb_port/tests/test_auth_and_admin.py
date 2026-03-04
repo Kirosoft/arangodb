@@ -64,6 +64,85 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(metrics_response.status_code, 200)
         self.assertGreaterEqual(metrics_response.body["result"]["requestsTotal"], 1)
 
+    def test_user_api_admin_lifecycle(self) -> None:
+        runtime = build_default_server()
+
+        login_request = HttpRequest(
+            method="POST",
+            path="/_open/auth",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb"},
+        )
+        token = runtime.handle_request(login_request).body["result"]["token"]
+
+        create_user = HttpRequest(
+            method="POST",
+            path="/_api/user",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+            body={"user": "alice", "passwd": "secret", "isAdmin": False},
+        )
+        create_response = runtime.handle_request(create_user)
+        self.assertEqual(create_response.status_code, 201)
+        self.assertEqual(create_response.body["result"]["user"], "alice")
+
+        list_users = HttpRequest(
+            method="GET",
+            path="/_api/user",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        list_response = runtime.handle_request(list_users)
+        self.assertEqual(list_response.status_code, 200)
+        users = [entry["user"] for entry in list_response.body["result"]]
+        self.assertIn("alice", users)
+
+        delete_user = HttpRequest(
+            method="DELETE",
+            path="/_api/user/alice",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        delete_response = runtime.handle_request(delete_user)
+        self.assertEqual(delete_response.status_code, 200)
+
+    def test_user_api_requires_admin(self) -> None:
+        runtime = build_default_server()
+
+        root_login = HttpRequest(
+            method="POST",
+            path="/_open/auth",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb"},
+        )
+        root_token = runtime.handle_request(root_login).body["result"]["token"]
+        runtime.handle_request(
+            HttpRequest(
+                method="POST",
+                path="/_api/user",
+                api_version=1,
+                headers={"authorization": f"Bearer {root_token}"},
+                body={"user": "bob", "passwd": "secret", "isAdmin": False},
+            )
+        )
+
+        user_login = HttpRequest(
+            method="POST",
+            path="/_open/auth",
+            api_version=1,
+            body={"username": "bob", "password": "secret"},
+        )
+        user_token = runtime.handle_request(user_login).body["result"]["token"]
+
+        denied_request = HttpRequest(
+            method="GET",
+            path="/_api/user",
+            api_version=1,
+            headers={"authorization": f"Bearer {user_token}"},
+        )
+        denied_response = runtime.handle_request(denied_request)
+        self.assertEqual(denied_response.status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()
