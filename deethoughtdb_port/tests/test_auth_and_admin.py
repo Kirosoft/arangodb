@@ -155,6 +155,16 @@ class AuthAndAdminTests(unittest.TestCase):
         self.assertEqual(server_response.body["result"]["engine"], "rocksdb")
         self.assertIn("role", server_response.body["result"])
 
+        server_id_request = HttpRequest(
+            method="GET",
+            path="/_admin/server/id",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        server_id_response = runtime.handle_request(server_id_request)
+        self.assertEqual(server_id_response.status_code, 200)
+        self.assertIn("id", server_id_response.body)
+
         statistics_request = HttpRequest(
             method="GET",
             path="/_admin/statistics",

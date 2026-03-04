@@ -777,6 +777,17 @@ class AdminServerHandler(RestHandler):
         )
 
 
+class AdminServerIdHandler(RestHandler):
+    def __init__(self, cluster: ClusterService) -> None:
+        self._cluster = cluster
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "GET":
+            raise bad_request("/_admin/server/id expects GET")
+        server_id = "CRDN-1" if self._cluster.enabled else "SNGLE-1"
+        return HttpResponse(status_code=200, body={"id": server_id})
+
+
 class AdminStatisticsHandler(RestHandler):
     def __init__(self, metrics: dict[str, object]) -> None:
         self._metrics = metrics
@@ -1407,6 +1418,13 @@ def _admin_server_handler_ctor(
     return _build
 
 
+def _admin_server_id_handler_ctor(cluster: ClusterService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminServerIdHandler(cluster)
+
+    return _build
+
+
 def _admin_statistics_handler_ctor(metrics: dict[str, object]):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminStatisticsHandler(metrics)
@@ -1588,6 +1606,11 @@ def build_default_server(
     handler_factory.add_handler(
         "/_admin/server",
         _admin_server_handler_ctor(app_server, storage_engine, cluster),
+        [1, 2],
+    )
+    handler_factory.add_handler(
+        "/_admin/server/id",
+        _admin_server_id_handler_ctor(cluster),
         [1, 2],
     )
     handler_factory.add_handler(
