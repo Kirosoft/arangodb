@@ -201,6 +201,48 @@ class LiveRocksDBIntegrationTests(unittest.TestCase):
         self.assertIsInstance(view_payload, dict)
         self.assertEqual(view_payload.get("name"), view_name)
 
+    def test_import_and_edges_endpoints_live(self) -> None:
+        db = urllib.parse.quote(self.test_db)
+
+        self.client.request(
+            "POST",
+            f"/_db/{db}/_api/collection",
+            body={"name": "bulk_live", "waitForSync": False},
+            expected=(200, 201, 202, 409),
+        )
+
+        imported = self.client.request(
+            "POST",
+            f"/_db/{db}/_api/import?collection=bulk_live",
+            body=[{"_key": "d1", "value": 1}, {"_key": "d2", "value": 2}],
+            expected=(200, 201, 202),
+        )
+        imported_payload = imported.get("result", imported)
+        self.assertIsInstance(imported_payload, dict)
+
+        self.client.request(
+            "POST",
+            f"/_db/{db}/_api/collection",
+            body={"name": "edges_live", "waitForSync": False},
+            expected=(200, 201, 202, 409),
+        )
+
+        edge = self.client.request(
+            "POST",
+            f"/_db/{db}/_api/document/edges_live",
+            body={"_key": "e1", "_from": "bulk_live/d1", "_to": "bulk_live/d2", "kind": "link"},
+            expected=(200, 201, 202),
+        )
+        edge_key = str(edge.get("_key") or edge.get("result", {}).get("_key"))
+        self.assertTrue(edge_key)
+
+        edge_read = self.client.request(
+            "GET",
+            f"/_db/{db}/_api/document/edges_live/{urllib.parse.quote(edge_key)}",
+            expected=(200,),
+        )
+        self.assertEqual(edge_read.get("kind"), "link")
+
 
 if __name__ == "__main__":
     unittest.main()
