@@ -9,6 +9,7 @@ from deethoughtdb_port.api.errors import ApiError, bad_request, forbidden, unaut
 from deethoughtdb_port.domain.auth import AuthService
 from deethoughtdb_port.domain.inmemory import (
     InMemoryJobManager,
+    InMemoryTaskManager,
     InMemoryTransactionManager,
 )
 from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
@@ -547,6 +548,51 @@ class JobHandler(RestHandler):
         raise bad_request("unsupported job path")
 
 
+class TasksHandler(RestHandler):
+    def __init__(self, tasks: InMemoryTaskManager) -> None:
+        self._tasks = tasks
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method == "POST" and len(request.suffixes) == 0:
+            if not isinstance(request.body, dict):
+                raise bad_request("task creation expects JSON object")
+            task = self._tasks.create(request.body)
+            return HttpResponse(status_code=201, body={"result": task})
+
+        if request.method == "GET" and len(request.suffixes) == 0:
+            return HttpResponse(status_code=200, body={"result": self._tasks.list()})
+
+        if request.method == "GET" and len(request.suffixes) == 1:
+            task = self._tasks.get(request.suffixes[0])
+            if task is None:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"task '{request.suffixes[0]}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": task})
+
+        if request.method == "DELETE" and len(request.suffixes) == 1:
+            removed = self._tasks.delete(request.suffixes[0])
+            if not removed:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"task '{request.suffixes[0]}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": {"id": request.suffixes[0], "deleted": True}})
+
+        raise bad_request("unsupported tasks path")
+
+
 class AdminClusterHandler(RestHandler):
     def __init__(self, cluster: ClusterService) -> None:
         self._cluster = cluster
@@ -627,6 +673,7 @@ class ServerRuntime:
     handler_factory: RestHandlerFactory
     transaction_manager: InMemoryTransactionManager
     job_manager: InMemoryJobManager
+    task_manager: InMemoryTaskManager
     storage_engine: RocksDBEnginePort
     auth: AuthService
     metrics: dict[str, object]
@@ -817,6 +864,13 @@ def _job_handler_ctor(jobs: InMemoryJobManager):
     return _build
 
 
+def _tasks_handler_ctor(tasks: InMemoryTaskManager):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return TasksHandler(tasks)
+
+    return _build
+
+
 def _admin_cluster_handler_ctor(cluster: ClusterService):
     def _build(_data: dict | None = None) -> RestHandler:
         return AdminClusterHandler(cluster)
@@ -879,6 +933,7 @@ def build_default_server(
 
     transaction_manager = InMemoryTransactionManager()
     job_manager = InMemoryJobManager()
+    task_manager = InMemoryTaskManager()
     storage_engine = RocksDBEnginePort(
         RocksDBPortConfig.from_root(rocksdb_root or default_rocksdb_root)
     )
@@ -939,6 +994,7 @@ def build_default_server(
         "/_api/wal", _wal_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler("/_api/job", _job_handler_ctor(job_manager), [1, 2])
+    handler_factory.add_prefix_handler("/_api/tasks", _tasks_handler_ctor(task_manager), [1, 2])
     handler_factory.add_prefix_handler(
         "/_db", _db_prefixed_api_handler_ctor(storage_engine, transaction_manager), [1, 2]
     )
@@ -952,6 +1008,7 @@ def build_default_server(
         handler_factory=handler_factory,
         transaction_manager=transaction_manager,
         job_manager=job_manager,
+        task_manager=task_manager,
         storage_engine=storage_engine,
         auth=auth,
         metrics=metrics,

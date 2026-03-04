@@ -345,6 +345,37 @@ class ApiHandlerTests(unittest.TestCase):
         delete_response = runtime.handler_factory.invoke(delete_handler, delete_job)
         self.assertEqual(delete_response.status_code, 200)
 
+    def test_tasks_api_lifecycle(self) -> None:
+        runtime = build_default_server()
+
+        create_task = HttpRequest(
+            method="POST",
+            path="/_api/tasks",
+            api_version=1,
+            body={"name": "cleanup", "command": "cleanup::run", "params": {"limit": 10}},
+        )
+        create_handler = runtime.handler_factory.create_handler(create_task)
+        create_response = runtime.handler_factory.invoke(create_handler, create_task)
+        self.assertEqual(create_response.status_code, 201)
+        task_id = create_response.body["result"]["id"]
+
+        list_tasks = HttpRequest(method="GET", path="/_api/tasks", api_version=1)
+        list_handler = runtime.handler_factory.create_handler(list_tasks)
+        list_response = runtime.handler_factory.invoke(list_handler, list_tasks)
+        self.assertEqual(list_response.status_code, 200)
+        self.assertTrue(any(task["id"] == task_id for task in list_response.body["result"]))
+
+        get_task = HttpRequest(method="GET", path=f"/_api/tasks/{task_id}", api_version=1)
+        get_handler = runtime.handler_factory.create_handler(get_task)
+        get_response = runtime.handler_factory.invoke(get_handler, get_task)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertEqual(get_response.body["result"]["name"], "cleanup")
+
+        delete_task = HttpRequest(method="DELETE", path=f"/_api/tasks/{task_id}", api_version=1)
+        delete_handler = runtime.handler_factory.create_handler(delete_task)
+        delete_response = runtime.handler_factory.invoke(delete_handler, delete_task)
+        self.assertEqual(delete_response.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()

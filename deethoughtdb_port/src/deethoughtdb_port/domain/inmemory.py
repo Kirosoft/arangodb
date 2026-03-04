@@ -92,6 +92,37 @@ class InMemoryJobManager:
         return removed is not None
 
 
+class InMemoryTaskManager:
+    def __init__(self) -> None:
+        self._tasks: dict[str, dict] = {}
+
+    def create(self, task: dict) -> dict:
+        task_id = str(task.get("id") or uuid.uuid4().hex)
+        payload = {
+            "id": task_id,
+            "name": str(task.get("name", "task")),
+            "command": str(task.get("command", "")),
+            "params": dict(task.get("params", {})),
+            "period": task.get("period"),
+            "offset": task.get("offset"),
+        }
+        self._tasks[task_id] = payload
+        return dict(payload)
+
+    def list(self) -> list[dict]:
+        return [dict(task) for task in self._tasks.values()]
+
+    def get(self, task_id: str) -> dict | None:
+        task = self._tasks.get(task_id)
+        if task is None:
+            return None
+        return dict(task)
+
+    def delete(self, task_id: str) -> bool:
+        removed = self._tasks.pop(task_id, None)
+        return removed is not None
+
+
 class NoopStorageEngine(StorageEngine):
     def health_check(self) -> dict:
         return {"status": "ok"}
