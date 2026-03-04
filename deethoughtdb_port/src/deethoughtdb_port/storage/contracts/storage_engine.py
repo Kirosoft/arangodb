@@ -66,6 +66,14 @@ class StorageEngineContract(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def create_index(self, database: str, collection: str, definition: dict) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_indexes(self, database: str, collection: str) -> list[dict]:
+        raise NotImplementedError
+
+    @abstractmethod
     def flush_wal(self) -> dict:
         raise NotImplementedError
 

@@ -154,6 +154,80 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertTrue(response.body["error"])
 
+    def test_index_create_and_list(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "users"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        create_index = HttpRequest(
+            method="POST",
+            path="/_api/index",
+            api_version=1,
+            body={"collection": "users", "type": "hash", "fields": ["email"]},
+        )
+        index_handler = runtime.handler_factory.create_handler(create_index)
+        index_response = runtime.handler_factory.invoke(index_handler, create_index)
+        self.assertEqual(index_response.status_code, 201)
+        self.assertEqual(index_response.body["result"]["type"], "hash")
+
+        list_index = HttpRequest(method="GET", path="/_api/index/users", api_version=1)
+        list_handler = runtime.handler_factory.create_handler(list_index)
+        list_response = runtime.handler_factory.invoke(list_handler, list_index)
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(len(list_response.body["result"]), 1)
+        self.assertEqual(list_response.body["result"][0]["fields"], ["email"])
+
+    def test_db_prefixed_index_routes(self) -> None:
+        runtime = build_default_server()
+
+        create_db = HttpRequest(
+            method="POST",
+            path="/_api/database",
+            api_version=1,
+            body={"name": "tenant_index"},
+        )
+        db_handler = runtime.handler_factory.create_handler(create_db)
+        db_response = runtime.handler_factory.invoke(db_handler, create_db)
+        self.assertEqual(db_response.status_code, 201)
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_db/tenant_index/_api/collection",
+            api_version=1,
+            body={"name": "events"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        create_index = HttpRequest(
+            method="POST",
+            path="/_db/tenant_index/_api/index",
+            api_version=1,
+            body={"collection": "events", "type": "hash", "fields": ["kind"]},
+        )
+        index_handler = runtime.handler_factory.create_handler(create_index)
+        index_response = runtime.handler_factory.invoke(index_handler, create_index)
+        self.assertEqual(index_response.status_code, 201)
+
+        list_index = HttpRequest(
+            method="GET",
+            path="/_db/tenant_index/_api/index/events",
+            api_version=1,
+        )
+        list_handler = runtime.handler_factory.create_handler(list_index)
+        list_response = runtime.handler_factory.invoke(list_handler, list_index)
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(len(list_response.body["result"]), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

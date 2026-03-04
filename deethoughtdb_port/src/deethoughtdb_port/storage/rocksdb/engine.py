@@ -114,6 +114,14 @@ class RocksDBEnginePort(StorageEngineContract):
         self._wal.record(f"remove_document:{database}/{collection}/{key}")
         return True
 
+    def create_index(self, database: str, collection: str, definition: dict) -> dict:
+        index_info = self._catalog.create_index(database, collection, definition)
+        self._wal.record(f"create_index:{database}/{collection}/{index_info['id']}")
+        return index_info
+
+    def list_indexes(self, database: str, collection: str) -> list[dict]:
+        return self._catalog.list_indexes(database, collection)
+
     def flush_wal(self) -> dict:
         return self._wal.flush()
 

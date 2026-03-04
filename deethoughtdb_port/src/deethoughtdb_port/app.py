@@ -171,6 +171,36 @@ class DocumentHandler(RestHandler):
         raise bad_request("unsupported document path")
 
 
+class IndexHandler(RestHandler):
+    def __init__(self, storage: RocksDBEnginePort) -> None:
+        self._storage = storage
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        database = _resolve_database_from_path(request)
+
+        if request.method == "POST":
+            if not isinstance(request.body, dict):
+                raise bad_request("index creation expects JSON object")
+            collection = request.body.get("collection")
+            if not isinstance(collection, str) or not collection:
+                raise bad_request("index creation expects 'collection' in body")
+            try:
+                index_info = self._storage.create_index(database, collection, request.body)
+            except KeyError as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=201, body={"result": index_info})
+
+        if request.method == "GET" and len(request.suffixes) == 1:
+            collection = request.suffixes[0]
+            try:
+                indexes = self._storage.list_indexes(database, collection)
+            except KeyError as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=200, body={"result": indexes})
+
+        raise bad_request("unsupported index path")
+
+
 class TransactionHandler(RestHandler):
     def __init__(self, manager: InMemoryTransactionManager) -> None:
         self._manager = manager
@@ -382,6 +412,8 @@ class DbPrefixedApiHandler(RestHandler):
             return CollectionHandler(self._storage).handle(delegated)
         if resource == "document":
             return DocumentHandler(self._storage).handle(delegated)
+        if resource == "index":
+            return IndexHandler(self._storage).handle(delegated)
         if resource == "transaction":
             return TransactionHandler(self._manager).handle(delegated)
 
@@ -596,6 +628,13 @@ def _document_handler_ctor(storage: RocksDBEnginePort):
     return _build
 
 
+def _index_handler_ctor(storage: RocksDBEnginePort):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return IndexHandler(storage)
+
+    return _build
+
+
 def _db_prefixed_api_handler_ctor(storage: RocksDBEnginePort, manager: InMemoryTransactionManager):
     def _build(_data: dict | None = None) -> RestHandler:
         return DbPrefixedApiHandler(storage, manager)
@@ -664,6 +703,9 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler(
         "/_api/document", _document_handler_ctor(storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/index", _index_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/transaction", _transaction_handler_ctor(transaction_manager), [1, 2]
