@@ -13,16 +13,26 @@ class ValidationRunnerTests(unittest.TestCase):
         self.assertIn("unit-core", names)
         self.assertIn("live-rocksdb", names)
 
+    def test_matrix_gates_are_loaded(self) -> None:
+        matrix_path = validation_runner._default_matrix_path()
+        gates = validation_runner._load_matrix_gates(matrix_path)
+        self.assertIn("A", gates)
+        self.assertIn("B", gates)
+        self.assertTrue(gates["A"].blocking)
+
     def test_summary_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
             sample = {
                 "generatedOn": "2026-03-04T00:00:00+00:00",
+                "matrixPath": "matrix.yml",
                 "overall": "pass",
                 "results": [
                     {
                         "suite": "unit-core",
                         "gate": "A",
+                        "gateName": "backend-core",
+                        "gateBlocking": True,
                         "status": "pass",
                         "durationSec": 1.2,
                         "exitCode": 0,
@@ -34,6 +44,7 @@ class ValidationRunnerTests(unittest.TestCase):
             loaded = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(loaded["overall"], "pass")
             self.assertEqual(loaded["results"][0]["gate"], "A")
+            self.assertTrue(loaded["results"][0]["gateBlocking"])
 
 
 if __name__ == "__main__":
