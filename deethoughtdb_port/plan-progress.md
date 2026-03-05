@@ -48,8 +48,8 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [ ] Scope document approved (in-scope/out-of-scope).
-- [ ] Architecture spec copied/approved in this worktree.
-- [ ] Validation matrix version pinned.
+- [x] Architecture spec copied/approved in this worktree.
+- [x] Validation matrix version pinned.
 - [ ] Runbook approved by backend, cluster, storage, release owners.
 - [ ] Baseline commit SHA tagged for parity comparison.
 
@@ -69,16 +69,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Feature phase orchestration implemented.
-- [ ] Config collect/validate/prepare/start/stop lifecycle implemented.
-- [ ] Role mode behavior implemented (`single`, `coordinator`, `dbserver`).
-- [ ] Readiness/liveness semantics implemented.
-- [ ] Startup/shutdown structured logging in place.
+- [x] Feature phase orchestration implemented.
+- [x] Config collect/validate/prepare/start/stop lifecycle implemented.
+- [x] Role mode behavior implemented (`single`, `coordinator`, `dbserver`).
+- [x] Readiness/liveness semantics implemented.
+- [x] Startup/shutdown structured logging in place.
 
 ### Exit Gate
 
-- [ ] Process boots and cleanly shuts down across target roles.
-- [ ] Smoke tests pass for startup, config validation, and shutdown.
+- [x] Process boots and cleanly shuts down across target roles.
+- [x] Smoke tests pass for startup, config validation, and shutdown.
 
 ---
 
@@ -90,16 +90,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Exact-path + prefix-path dispatch implemented.
-- [ ] API version partitioning and unknown-version behavior implemented.
-- [ ] Request suffix parsing and handler context propagation implemented.
-- [ ] Standardized error envelope (`error`, `errorNum`, `errorMessage`) implemented.
-- [ ] Multi-DB route context (`/_db/<name>/...`) implemented.
+- [x] Exact-path + prefix-path dispatch implemented.
+- [x] API version partitioning and unknown-version behavior implemented.
+- [x] Request suffix parsing and handler context propagation implemented.
+- [x] Standardized error envelope (`error`, `errorNum`, `errorMessage`) implemented.
+- [x] Multi-DB route context (`/_db/<name>/...`) implemented.
 
 ### Exit Gate
 
-- [ ] Core admin/version/status routes pass compatibility checks.
-- [ ] Route dispatch parity tests green.
+- [x] Core admin/version/status routes pass compatibility checks.
+- [x] Route dispatch parity tests green.
 
 ---
 
@@ -111,16 +111,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Database/collection/view/index metadata models implemented.
+- [x] Database/collection/view/index metadata models implemented.
 - [ ] DDL lifecycle operations implemented (create/change/rename/drop).
 - [ ] Storage engine selector and engine lifecycle hooks implemented.
-- [ ] Recovery state and capability/statistics exposure implemented.
-- [ ] RocksDB integration interface wired (internals excluded from reimplementation).
+- [x] Recovery state and capability/statistics exposure implemented.
+- [x] RocksDB integration interface wired (internals excluded from reimplementation).
 
 ### Exit Gate
 
-- [ ] Catalog/DDL parity tests green.
-- [ ] Storage interface tests green.
+- [x] Catalog/DDL parity tests green.
+- [x] Storage interface tests green.
 
 ---
 
@@ -132,16 +132,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Transaction begin/commit/abort/finish implemented.
+- [x] Transaction begin/commit/abort/finish implemented.
 - [ ] Collection enrollment and lock/access mode semantics implemented.
 - [ ] CRUD paths implemented (`document`, `insert`, `update`, `replace`, `remove`, `truncate`).
-- [ ] Revision/precondition/conflict behavior implemented.
+- [x] Revision/precondition/conflict behavior implemented.
 - [ ] Async operation pathways implemented where required.
 
 ### Exit Gate
 
-- [ ] Gate A transaction and document suites green.
-- [ ] No unexplained regression in consistency/conflict semantics.
+- [x] Gate A transaction and document suites green.
+- [x] No unexplained regression in consistency/conflict semantics.
 
 ---
 
@@ -153,15 +153,15 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Token auth and user manager implemented.
-- [ ] Root user bootstrap behavior implemented.
+- [x] Token auth and user manager implemented.
+- [x] Root user bootstrap behavior implemented.
 - [ ] Auth reload and permission checks implemented.
-- [ ] Admin APIs in scope implemented (`status`, `server`, `log`, `metrics`, `shutdown`, etc.).
+- [x] Admin APIs in scope implemented (`status`, `server`, `log`, `metrics`, `shutdown`, etc.).
 - [ ] Security defaults and UTF-8/input validation policy implemented.
 
 ### Exit Gate
 
-- [ ] Gate A auth/admin suites green.
+- [x] Gate A auth/admin suites green.
 - [ ] No policy bypass regressions.
 
 ---
@@ -177,7 +177,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 - [ ] Cluster topology state and heartbeat behaviors implemented.
 - [ ] Agency CAS and callback patterns implemented.
 - [ ] Maintenance and shard leadership flows implemented.
-- [ ] Legacy replication sync/applier behaviors implemented.
+- [x] Legacy replication sync/applier behaviors implemented.
 - [ ] Replication2 log/state-machine APIs implemented (feature-gated).
 
 ### Exit Gate
@@ -196,14 +196,14 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [ ] Metrics families emitted for server/scheduler/replication/cluster.
-- [ ] Statistics endpoints and request accounting aligned.
-- [ ] Crash/reporting artifacts capture integrated.
-- [ ] Runbook artifact collection paths validated.
+- [x] Statistics endpoints and request accounting aligned.
+- [x] Crash/reporting artifacts capture integrated.
+- [x] Runbook artifact collection paths validated.
 - [ ] Flake detection and retry policies established.
 
 ### Exit Gate
 
-- [ ] Gate A/B observability suites green.
+- [x] Gate A/B observability suites green.
 - [ ] Operational dashboards and alerts validated.
 
 ---
@@ -234,8 +234,8 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 Apply in every phase after initial bootstrap:
 
-- [ ] No new unexplained regression in previously green in-scope suites.
-- [ ] Required artifacts produced and archived for each run.
+- [x] No new unexplained regression in previously green in-scope suites.
+- [x] Required artifacts produced and archived for each run.
 - [ ] Risk register updated for blocking failures.
 - [ ] Waivers (if any) include owner, due date, mitigation, rollback.
 
@@ -245,13 +245,13 @@ Apply in every phase after initial bootstrap:
 
 ### M1 (end Phase 3)
 
-- [ ] Runtime + transport skeleton complete.
-- [ ] Baseline API dispatch behavior verified.
+- [x] Runtime + transport skeleton complete.
+- [x] Baseline API dispatch behavior verified.
 
 ### M2 (end Phase 5)
 
 - [ ] Core backend data plane complete.
-- [ ] Gate A mostly green except tracked residuals.
+- [x] Gate A mostly green except tracked residuals.
 
 ### M3 (end Phase 7)
 
