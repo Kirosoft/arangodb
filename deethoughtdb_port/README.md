@@ -50,6 +50,24 @@ export DTH_ARANGO_PASSWORD=<root-password>
 python -m unittest tests.test_live_rocksdb_integration -v
 ```
 
+Example isolated local run on port 8530 (recommended to avoid clashing with an existing 8529 instance):
+
+```bash
+docker rm -f dth-live-8530 || true
+docker run -d --name dth-live-8530 -p 8530:8529 -e ARANGO_ROOT_PASSWORD=password arangodb:3.11
+```
+
+PowerShell strict live run against the isolated instance:
+
+```powershell
+$env:DTH_LIVE_ROCKSDB='1'
+$env:DTH_STRICT_LIVE_ROCKSDB='1'
+$env:DTH_ARANGO_URL='http://127.0.0.1:8530'
+$env:DTH_ARANGO_USER='root'
+$env:DTH_ARANGO_PASSWORD='password'
+python -m pytest -q tests/test_live_rocksdb_integration.py
+```
+
 The suite will:
 
 1. authenticate against `/_open/auth`
