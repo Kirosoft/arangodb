@@ -146,3 +146,30 @@ class ClusterService:
         if not self._maintenance and not force:
             raise RuntimeError("maintenance mode required for shard leadership changes")
         return self._shard_leadership.pop(shard, None) is not None
+
+
+class AgencyService:
+    def __init__(self, enabled: bool = False) -> None:
+        self._enabled = enabled
+        self._store: dict[str, object] = {}
+        self._index = 0
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    def read(self, keys: list[str]) -> dict[str, object]:
+        return {key: self._store[key] for key in keys if key in self._store}
+
+    def write(self, entries: dict[str, object]) -> dict[str, object]:
+        self._store.update(entries)
+        self._index += 1
+        return {"index": self._index, "written": sorted(entries.keys())}
+
+    def cas(self, key: str, old_value: object, new_value: object) -> dict[str, object]:
+        current = self._store.get(key)
+        if current != old_value:
+            return {"applied": False, "index": self._index, "current": current}
+        self._store[key] = new_value
+        self._index += 1
+        return {"applied": True, "index": self._index, "current": new_value}

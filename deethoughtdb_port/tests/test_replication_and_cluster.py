@@ -135,6 +135,16 @@ class ReplicationAndClusterTests(unittest.TestCase):
         response = runtime.handle_request(request)
         self.assertEqual(response.status_code, 400)
 
+        agency_request = HttpRequest(
+            method="POST",
+            path="/_api/agency/read",
+            api_version=1,
+            headers=headers,
+            body={"keys": ["/Plan/Version"]},
+        )
+        agency_response = runtime.handle_request(agency_request)
+        self.assertEqual(agency_response.status_code, 400)
+
     def test_cluster_health_and_role(self) -> None:
         runtime = build_default_server(cluster_enabled=True)
         token = self._token(runtime)
@@ -264,6 +274,57 @@ class ReplicationAndClusterTests(unittest.TestCase):
         shard_release_force_response = runtime.handle_request(shard_release_force)
         self.assertEqual(shard_release_force_response.status_code, 200)
         self.assertTrue(shard_release_force_response.body["result"]["released"])
+
+    def test_agency_read_write_and_cas(self) -> None:
+        runtime = build_default_server(cluster_enabled=True)
+        token = self._token(runtime)
+        headers = {"authorization": f"Bearer {token}"}
+
+        write_request = HttpRequest(
+            method="POST",
+            path="/_api/agency/write",
+            api_version=1,
+            headers=headers,
+            body={"entries": {"/Plan/Version": 1, "/Target/Health": "GOOD"}},
+        )
+        write_response = runtime.handle_request(write_request)
+        self.assertEqual(write_response.status_code, 200)
+        self.assertIn("index", write_response.body["result"])
+
+        read_request = HttpRequest(
+            method="POST",
+            path="/_api/agency/read",
+            api_version=1,
+            headers=headers,
+            body={"keys": ["/Plan/Version", "/Target/Health", "/Missing"]},
+        )
+        read_response = runtime.handle_request(read_request)
+        self.assertEqual(read_response.status_code, 200)
+        self.assertEqual(read_response.body["result"]["/Plan/Version"], 1)
+        self.assertEqual(read_response.body["result"]["/Target/Health"], "GOOD")
+        self.assertNotIn("/Missing", read_response.body["result"])
+
+        cas_success = HttpRequest(
+            method="POST",
+            path="/_api/agency/cas",
+            api_version=1,
+            headers=headers,
+            body={"key": "/Plan/Version", "old": 1, "new": 2},
+        )
+        cas_success_response = runtime.handle_request(cas_success)
+        self.assertEqual(cas_success_response.status_code, 200)
+        self.assertTrue(cas_success_response.body["result"]["applied"])
+
+        cas_fail = HttpRequest(
+            method="POST",
+            path="/_api/agency/cas",
+            api_version=1,
+            headers=headers,
+            body={"key": "/Plan/Version", "old": 1, "new": 3},
+        )
+        cas_fail_response = runtime.handle_request(cas_fail)
+        self.assertEqual(cas_fail_response.status_code, 200)
+        self.assertFalse(cas_fail_response.body["result"]["applied"])
 
 
 if __name__ == "__main__":

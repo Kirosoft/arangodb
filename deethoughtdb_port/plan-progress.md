@@ -181,7 +181,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [x] Cluster topology state and heartbeat behaviors implemented.
-- [ ] Agency CAS and callback patterns implemented. `[next]`
+- [x] Agency CAS and callback patterns implemented.
 - [x] Maintenance and shard leadership flows implemented.
 - [x] Legacy replication sync/applier behaviors implemented.
 - [ ] Replication2 log/state-machine APIs implemented (feature-gated). `[deferred]`
@@ -261,7 +261,7 @@ Apply in every phase after initial bootstrap:
 
 ### M3 (end Phase 7)
 
-- [ ] Distributed behavior complete. `[next]`
+- [x] Distributed behavior complete.
 - [ ] Gate B near-green with no correctness blockers. `[blocked]`
 
 ### M4 (end Phase 9)
@@ -294,7 +294,7 @@ Release is not certified until all required approvers sign off.
 
 ## Validation status
 
-- Full package suite: **67 passed** (`python -m pytest -q`)
+- Full package suite: **68 passed** (`python -m pytest -q`)
 - Strict live suite on isolated target: **5 passed** (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
 - Live endpoint: `http://127.0.0.1:8530` (container `dth-live-8530`)
 
@@ -317,6 +317,8 @@ Release is not certified until all required approvers sign off.
 - Added replication `sync` endpoint
 - Added maintenance-gated shard leadership endpoints (assign/list/release)
 - Added forced shard leadership release flow for maintenance-off cleanup
+- Added agency `read`, `write`, and `cas` coordination endpoints
+- Added cluster-disabled gating test coverage for agency API
 
 ## Commit timeline (latest first)
 

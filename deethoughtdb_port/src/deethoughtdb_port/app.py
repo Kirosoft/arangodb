@@ -13,7 +13,7 @@ from deethoughtdb_port.domain.inmemory import (
     InMemoryTaskManager,
     InMemoryTransactionManager,
 )
-from deethoughtdb_port.domain.distributed import ClusterService, ReplicationService
+from deethoughtdb_port.domain.distributed import AgencyService, ClusterService, ReplicationService
 from deethoughtdb_port.observability import StructuredLogBuffer, ValidationArtifactRecorder
 from deethoughtdb_port.runtime.feature import Feature
 from deethoughtdb_port.runtime.server import ApplicationServer
@@ -1056,6 +1056,52 @@ class ReplicationHandler(RestHandler):
         raise bad_request("unsupported replication path")
 
 
+class AgencyHandler(RestHandler):
+    def __init__(self, agency: AgencyService) -> None:
+        self._agency = agency
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if not self._agency.enabled:
+            raise bad_request("agency API not enabled")
+
+        if request.method == "POST" and request.path == "/_api/agency/read":
+            if not isinstance(request.body, dict):
+                raise bad_request("agency read expects JSON body")
+            keys = request.body.get("keys", [])
+            if not isinstance(keys, list):
+                raise bad_request("agency read expects keys list")
+            normalized = [str(key) for key in keys]
+            return HttpResponse(status_code=200, body={"result": self._agency.read(normalized)})
+
+        if request.method == "POST" and request.path == "/_api/agency/write":
+            if not isinstance(request.body, dict):
+                raise bad_request("agency write expects JSON body")
+            entries = request.body.get("entries", {})
+            if not isinstance(entries, dict):
+                raise bad_request("agency write expects entries object")
+            normalized = {str(key): value for key, value in entries.items()}
+            return HttpResponse(status_code=200, body={"result": self._agency.write(normalized)})
+
+        if request.method == "POST" and request.path == "/_api/agency/cas":
+            if not isinstance(request.body, dict):
+                raise bad_request("agency cas expects JSON body")
+            key = str(request.body.get("key", "")).strip()
+            if not key:
+                raise bad_request("agency cas requires key")
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": self._agency.cas(
+                        key=key,
+                        old_value=request.body.get("old"),
+                        new_value=request.body.get("new"),
+                    )
+                },
+            )
+
+        raise bad_request("unsupported agency path")
+
+
 class WalHandler(RestHandler):
     def __init__(self, storage: RocksDBEnginePort) -> None:
         self._storage = storage
@@ -1615,6 +1661,13 @@ def _replication_handler_ctor(replication: ReplicationService, storage: RocksDBE
     return _build
 
 
+def _agency_handler_ctor(agency: AgencyService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AgencyHandler(agency)
+
+    return _build
+
+
 def _wal_handler_ctor(storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
         return WalHandler(storage)
@@ -1720,6 +1773,7 @@ def build_default_server(
     auth.create_user("root", "deethoughtdb", is_admin=True)
     replication = ReplicationService(mode="cluster" if cluster_enabled else "single")
     cluster = ClusterService(role="coordinator" if cluster_enabled else "single", enabled=cluster_enabled)
+    agency = AgencyService(enabled=cluster_enabled)
 
     metrics: dict[str, object] = {
         "requests_total": 0,
@@ -1814,6 +1868,9 @@ def build_default_server(
     )
     handler_factory.add_prefix_handler(
         "/_api/replication", _replication_handler_ctor(replication, storage_engine), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
+        "/_api/agency", _agency_handler_ctor(agency), [1, 2]
     )
     handler_factory.add_prefix_handler(
         "/_api/wal", _wal_handler_ctor(storage_engine), [1, 2]
