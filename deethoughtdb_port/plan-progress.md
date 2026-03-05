@@ -243,7 +243,7 @@ Apply in every phase after initial bootstrap:
 - [x] No new unexplained regression in previously green in-scope suites.
 - [x] Required artifacts produced and archived for each run.
 - [x] Risk register updated for blocking failures.
-- [ ] Waivers (if any) include owner, due date, mitigation, rollback. `[deferred]`
+- [x] Waivers (if any) include owner, due date, mitigation, rollback.
 
 ---
 
@@ -282,6 +282,19 @@ Required approvals:
 - [ ] Release manager `[blocked]`
 
 Release is not certified until all required approvers sign off.
+
+---
+
+## 5a) Waiver Ledger
+
+Active waivers and planned deferrals are tracked here and must include owner, due date, mitigation, and rollback posture.
+
+| Waiver ID | Scope item | Type | Owner | Due date | Mitigation | Rollback | Status | Risk |
+|---|---|---|---|---|---|---|---|---|
+| WL-001 | Phase 9 ecosystem matrices (`arangojs/go/java/py/kafka/spark-ds/spring-data/tinkerpop`) | blocked | Release manager + ecosystem maintainers | 2026-03-26 | Run full matrix in CI; record per-suite evidence or explicit exception notes | Do not certify M4; keep release in non-certified state | open | R-001 |
+| WL-002 | Phase 8 operational dashboards/alerts validation | blocked | SRE/operations owner | 2026-03-19 | Validate dashboards against emitted metric families and alert thresholds | Keep operational readiness sign-off blocked | open | R-002 |
+| WL-003 | Phase 6 policy bypass regression sign-off | blocked | Security + backend owners | 2026-03-19 | Execute auth/admin abuse-path review with approval notes | Keep security sign-off blocked | open | R-003 |
+| WL-004 | Gate C excluded-domain evidence (`AQL/V8/UI`) | deferred | Backend port lead | 2026-04-02 | Document exclusion-only failures and verify no leakage into in-scope APIs | Maintain exclusions; do not re-scope current phase | open | R-001 |
 
 ---
 
@@ -336,6 +349,7 @@ Release is not certified until all required approvers sign off.
 - Added async API tests covering job-id retrieval and accepted-mode behavior
 - Added feature-gated Replication2 API surface (`state`, `logger-state`, `append-entries`)
 - Added Replication2 tests for disabled gating and log progression semantics
+- Added formal waiver ledger with owner/due/mitigation/rollback fields (`WL-001`..`WL-004`)
 
 ## Commit timeline (latest first)
 
