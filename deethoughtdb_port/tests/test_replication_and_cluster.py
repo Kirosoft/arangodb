@@ -191,6 +191,27 @@ class ReplicationAndClusterTests(unittest.TestCase):
         self.assertEqual(maintenance_put_response.status_code, 200)
         self.assertTrue(maintenance_put_response.body["result"]["enabled"])
 
+        shard_assign = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/shard-leadership",
+            api_version=1,
+            headers=headers,
+            body={"shard": "s100", "leader": "PRMR-2"},
+        )
+        shard_assign_response = runtime.handle_request(shard_assign)
+        self.assertEqual(shard_assign_response.status_code, 200)
+        self.assertEqual(shard_assign_response.body["result"]["shard"], "s100")
+
+        shard_list = HttpRequest(
+            method="GET",
+            path="/_admin/cluster/shard-leadership",
+            api_version=1,
+            headers=headers,
+        )
+        shard_list_response = runtime.handle_request(shard_list)
+        self.assertEqual(shard_list_response.status_code, 200)
+        self.assertEqual(shard_list_response.body["result"]["s100"], "PRMR-2")
+
         endpoints_request = HttpRequest(
             method="GET",
             path="/_admin/cluster/endpoints",
@@ -222,6 +243,27 @@ class ReplicationAndClusterTests(unittest.TestCase):
         maintenance_delete_response = runtime.handle_request(maintenance_delete)
         self.assertEqual(maintenance_delete_response.status_code, 200)
         self.assertFalse(maintenance_delete_response.body["result"]["enabled"])
+
+        shard_assign_without_maintenance = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/shard-leadership",
+            api_version=1,
+            headers=headers,
+            body={"shard": "s101", "leader": "PRMR-1"},
+        )
+        shard_assign_without_maintenance_response = runtime.handle_request(shard_assign_without_maintenance)
+        self.assertEqual(shard_assign_without_maintenance_response.status_code, 400)
+
+        shard_release_force = HttpRequest(
+            method="DELETE",
+            path="/_admin/cluster/shard-leadership/s100",
+            api_version=1,
+            headers=headers,
+            body={"force": True},
+        )
+        shard_release_force_response = runtime.handle_request(shard_release_force)
+        self.assertEqual(shard_release_force_response.status_code, 200)
+        self.assertTrue(shard_release_force_response.body["result"]["released"])
 
 
 if __name__ == "__main__":

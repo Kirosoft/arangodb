@@ -1218,6 +1218,50 @@ class AdminClusterHandler(RestHandler):
                 body={"result": self._cluster.record_heartbeat(server_id=server_id, status=status)},
             )
 
+        if request.method == "GET" and request.path == "/_admin/cluster/shard-leadership":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._cluster.shard_leadership()},
+            )
+
+        if request.method == "POST" and request.path == "/_admin/cluster/shard-leadership":
+            if not isinstance(request.body, dict):
+                raise bad_request("cluster shard leadership expects JSON object")
+            shard = str(request.body.get("shard", "")).strip()
+            leader = str(request.body.get("leader", "")).strip()
+            force = bool(request.body.get("force", False))
+            if not shard or not leader:
+                raise bad_request("cluster shard leadership requires shard and leader")
+            try:
+                assigned = self._cluster.assign_shard_leader(shard=shard, leader=leader, force=force)
+            except RuntimeError as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=200, body={"result": assigned})
+
+        if (
+            request.method == "DELETE"
+            and request.prefix == "/_admin/cluster"
+            and len(request.suffixes) == 2
+            and request.suffixes[0] == "shard-leadership"
+        ):
+            shard = request.suffixes[1]
+            force = bool(request.body.get("force", False)) if isinstance(request.body, dict) else False
+            try:
+                removed = self._cluster.release_shard_leader(shard=shard, force=force)
+            except RuntimeError as exc:
+                raise bad_request(str(exc)) from exc
+            if not removed:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"shard leadership '{shard}' not found",
+                    },
+                )
+            return HttpResponse(status_code=200, body={"result": {"shard": shard, "released": True}})
+
         if request.path == "/_admin/cluster/maintenance":
             if request.method == "GET":
                 return HttpResponse(

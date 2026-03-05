@@ -82,6 +82,7 @@ class ClusterService:
             "CRDN-1": "GOOD",
         }
         self._heartbeat_seq = 0
+        self._shard_leadership: dict[str, str] = {}
 
     @property
     def enabled(self) -> bool:
@@ -131,3 +132,17 @@ class ClusterService:
             "status": status,
             "heartbeatSeq": self._heartbeat_seq,
         }
+
+    def shard_leadership(self) -> dict[str, str]:
+        return dict(self._shard_leadership)
+
+    def assign_shard_leader(self, shard: str, leader: str, force: bool = False) -> dict[str, str]:
+        if not self._maintenance and not force:
+            raise RuntimeError("maintenance mode required for shard leadership changes")
+        self._shard_leadership[shard] = leader
+        return {"shard": shard, "leader": leader}
+
+    def release_shard_leader(self, shard: str, force: bool = False) -> bool:
+        if not self._maintenance and not force:
+            raise RuntimeError("maintenance mode required for shard leadership changes")
+        return self._shard_leadership.pop(shard, None) is not None

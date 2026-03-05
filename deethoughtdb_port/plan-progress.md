@@ -182,7 +182,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 - [x] Cluster topology state and heartbeat behaviors implemented.
 - [ ] Agency CAS and callback patterns implemented. `[next]`
-- [ ] Maintenance and shard leadership flows implemented. `[deferred]`
+- [x] Maintenance and shard leadership flows implemented.
 - [x] Legacy replication sync/applier behaviors implemented.
 - [ ] Replication2 log/state-machine APIs implemented (feature-gated). `[deferred]`
 
@@ -315,6 +315,8 @@ Release is not certified until all required approvers sign off.
 - Expanded M2/M3 test coverage in API and replication/cluster suites
 - Added cluster `endpoints` and `heartbeat` endpoints
 - Added replication `sync` endpoint
+- Added maintenance-gated shard leadership endpoints (assign/list/release)
+- Added forced shard leadership release flow for maintenance-off cleanup
 
 ## Commit timeline (latest first)
 
@@ -337,7 +339,7 @@ Release is not certified until all required approvers sign off.
 
 - Continue backend parity slices (admin/control and deep behavior edges)
 - Expand/maintain strict live coverage for newly added API surfaces
-- Continue M3 maintenance/shard-leadership semantics beyond endpoint surface
+- Continue M3 distributed semantics beyond endpoint surface (agency/CAS and leadership orchestration)
 - Keep matrix/runbook evidence aligned with implemented scope
 
 ## Execution model
