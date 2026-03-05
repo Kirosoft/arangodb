@@ -1284,6 +1284,32 @@ class AdminClusterHandler(RestHandler):
                 raise bad_request(str(exc)) from exc
             return HttpResponse(status_code=200, body={"result": assigned})
 
+        if request.method == "POST" and request.path == "/_admin/cluster/move-shard":
+            if not isinstance(request.body, dict):
+                raise bad_request("cluster move-shard expects JSON object")
+            shard = str(request.body.get("shard", "")).strip()
+            from_server = str(request.body.get("fromServer", "")).strip()
+            to_server = str(request.body.get("toServer", "")).strip()
+            force = bool(request.body.get("force", False))
+            if not shard or not from_server or not to_server:
+                raise bad_request("cluster move-shard requires shard, fromServer and toServer")
+            try:
+                moved = self._cluster.move_shard(
+                    shard=shard,
+                    from_server=from_server,
+                    to_server=to_server,
+                    force=force,
+                )
+            except RuntimeError as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=200, body={"result": moved})
+
+        if request.method == "POST" and request.path == "/_admin/cluster/rebalance":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._cluster.rebalance()},
+            )
+
         if (
             request.method == "DELETE"
             and request.prefix == "/_admin/cluster"

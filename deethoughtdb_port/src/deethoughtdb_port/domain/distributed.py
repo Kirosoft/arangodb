@@ -83,6 +83,7 @@ class ClusterService:
         }
         self._heartbeat_seq = 0
         self._shard_leadership: dict[str, str] = {}
+        self._last_rebalance = 0
 
     @property
     def enabled(self) -> bool:
@@ -146,6 +147,36 @@ class ClusterService:
         if not self._maintenance and not force:
             raise RuntimeError("maintenance mode required for shard leadership changes")
         return self._shard_leadership.pop(shard, None) is not None
+
+    def move_shard(
+        self,
+        shard: str,
+        from_server: str,
+        to_server: str,
+        force: bool = False,
+    ) -> dict[str, object]:
+        if not self._maintenance and not force:
+            raise RuntimeError("maintenance mode required for shard leadership changes")
+        current = self._shard_leadership.get(shard)
+        if current is not None and current != from_server and not force:
+            raise RuntimeError("fromServer does not match current shard leader")
+        self._servers.setdefault(from_server, "GOOD")
+        self._servers.setdefault(to_server, "GOOD")
+        self._shard_leadership[shard] = to_server
+        return {
+            "shard": shard,
+            "fromServer": from_server,
+            "toServer": to_server,
+            "moved": True,
+        }
+
+    def rebalance(self) -> dict[str, object]:
+        self._last_rebalance += 1
+        return {
+            "rebalanced": True,
+            "planVersion": self._last_rebalance,
+            "shards": len(self._shard_leadership),
+        }
 
 
 class AgencyService:

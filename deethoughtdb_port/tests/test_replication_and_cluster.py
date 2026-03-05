@@ -275,6 +275,59 @@ class ReplicationAndClusterTests(unittest.TestCase):
         self.assertEqual(shard_release_force_response.status_code, 200)
         self.assertTrue(shard_release_force_response.body["result"]["released"])
 
+        move_without_maintenance = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/move-shard",
+            api_version=1,
+            headers=headers,
+            body={"shard": "s200", "fromServer": "PRMR-1", "toServer": "PRMR-2"},
+        )
+        move_without_maintenance_response = runtime.handle_request(move_without_maintenance)
+        self.assertEqual(move_without_maintenance_response.status_code, 400)
+
+        maintenance_enable = HttpRequest(
+            method="PUT",
+            path="/_admin/cluster/maintenance",
+            api_version=1,
+            headers=headers,
+            body={"enabled": True},
+        )
+        maintenance_enable_response = runtime.handle_request(maintenance_enable)
+        self.assertEqual(maintenance_enable_response.status_code, 200)
+        self.assertTrue(maintenance_enable_response.body["result"]["enabled"])
+
+        assign_for_move = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/shard-leadership",
+            api_version=1,
+            headers=headers,
+            body={"shard": "s200", "leader": "PRMR-1"},
+        )
+        assign_for_move_response = runtime.handle_request(assign_for_move)
+        self.assertEqual(assign_for_move_response.status_code, 200)
+
+        move_with_maintenance = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/move-shard",
+            api_version=1,
+            headers=headers,
+            body={"shard": "s200", "fromServer": "PRMR-1", "toServer": "PRMR-2"},
+        )
+        move_with_maintenance_response = runtime.handle_request(move_with_maintenance)
+        self.assertEqual(move_with_maintenance_response.status_code, 200)
+        self.assertTrue(move_with_maintenance_response.body["result"]["moved"])
+
+        rebalance_request = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/rebalance",
+            api_version=1,
+            headers=headers,
+            body={},
+        )
+        rebalance_response = runtime.handle_request(rebalance_request)
+        self.assertEqual(rebalance_response.status_code, 200)
+        self.assertTrue(rebalance_response.body["result"]["rebalanced"])
+
     def test_agency_read_write_and_cas(self) -> None:
         runtime = build_default_server(cluster_enabled=True)
         token = self._token(runtime)

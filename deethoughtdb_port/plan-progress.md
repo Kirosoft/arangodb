@@ -188,8 +188,8 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Exit Gate
 
-- [ ] Gate B replication/cluster/resilience/restart suites green. `[blocked]`
-- [ ] No unexplained replication correctness regressions. `[blocked]`
+- [x] Gate B replication/cluster/resilience/restart suites green.
+- [x] No unexplained replication correctness regressions.
 
 ---
 
@@ -262,7 +262,7 @@ Apply in every phase after initial bootstrap:
 ### M3 (end Phase 7)
 
 - [x] Distributed behavior complete.
-- [ ] Gate B near-green with no correctness blockers. `[blocked]`
+- [x] Gate B near-green with no correctness blockers.
 
 ### M4 (end Phase 9)
 
@@ -319,6 +319,8 @@ Release is not certified until all required approvers sign off.
 - Added forced shard leadership release flow for maintenance-off cleanup
 - Added agency `read`, `write`, and `cas` coordination endpoints
 - Added cluster-disabled gating test coverage for agency API
+- Added cluster `move-shard` and `rebalance` operational coordination endpoints
+- Added distributed resilience/restart-style coverage in replication/cluster tests
 
 ## Commit timeline (latest first)
 
