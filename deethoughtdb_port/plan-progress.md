@@ -57,7 +57,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 - [x] Architecture spec copied/approved in this worktree.
 - [x] Validation matrix version pinned.
 - [ ] Runbook approved by backend, cluster, storage, release owners. `[blocked]`
-- [ ] Baseline commit SHA tagged for parity comparison. `[next]`
+- [x] Baseline commit SHA tagged for parity comparison.
 
 ### Exit Gate
 
@@ -118,8 +118,8 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [x] Database/collection/view/index metadata models implemented.
-- [ ] DDL lifecycle operations implemented (create/change/rename/drop). `[next]`
-- [ ] Storage engine selector and engine lifecycle hooks implemented. `[next]`
+- [x] DDL lifecycle operations implemented (create/change/rename/drop).
+- [x] Storage engine selector and engine lifecycle hooks implemented.
 - [x] Recovery state and capability/statistics exposure implemented.
 - [x] RocksDB integration interface wired (internals excluded from reimplementation).
 
@@ -139,10 +139,10 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [x] Transaction begin/commit/abort/finish implemented.
-- [ ] Collection enrollment and lock/access mode semantics implemented. `[next]`
+- [x] Collection enrollment and lock/access mode semantics implemented.
 - [x] CRUD paths implemented (`document`, `insert`, `update`, `replace`, `remove`, `truncate`).
 - [x] Revision/precondition/conflict behavior implemented.
-- [ ] Async operation pathways implemented where required. `[deferred]`
+- [x] Async operation pathways implemented where required.
 
 ### Exit Gate
 
@@ -290,11 +290,11 @@ Release is not certified until all required approvers sign off.
 ## Status snapshot
 
 - Migration is active and advancing with validated incremental parity slices.
-- Current emphasis: admin/API parity increments + live RocksDB validation hardening.
+- Current emphasis: sustain parity stability and prepare evidence for blocked/deferred closure paths.
 
 ## Validation status
 
-- Full package suite: **71 passed** (`python -m pytest -q`)
+- Full package suite: **77 passed** (`python -m pytest -q`)
 - Strict live suite on isolated target: **5 passed** (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
 - Live endpoint: `http://127.0.0.1:8530` (container `dth-live-8530`)
 
@@ -327,6 +327,13 @@ Release is not certified until all required approvers sign off.
 - Added `deethoughtdb_port/risk-register.md` for blocking risk tracking
 - Added validation runner retry policy and flake detection with per-attempt artifacts
 - Added validation-runner tests for flaky and hard-fail retry classification
+- Added collection DDL lifecycle parity (`rename`, `properties` read/update)
+- Added storage engine selector factory and lifecycle state hooks
+- Added transaction collection enrollment/access mode semantics (read/write/exclusive)
+- Added focused API tests for new DDL and transaction semantics
+- Created baseline parity tag `deethoughtdb-parity-baseline-20260305` at `44fa8b5583b5`
+- Added runtime async request pathways via `x-arango-async` (`true` and `store`)
+- Added async API tests covering job-id retrieval and accepted-mode behavior
 
 ## Commit timeline (latest first)
 
@@ -359,7 +366,6 @@ Release is not certified until all required approvers sign off.
 
 ## Execution model
 
-- Implement smallest parity slice
 - Validate (`pytest -q` + strict live run where relevant)
 - Commit and push
 - Repeat until gate closure and certification readiness

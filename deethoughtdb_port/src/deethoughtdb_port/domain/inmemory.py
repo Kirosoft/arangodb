@@ -47,18 +47,44 @@ class InMemoryCatalogService(CatalogService):
 
 class InMemoryTransactionManager(TransactionManager):
     def __init__(self) -> None:
-        self._active: set[str] = set()
+        self._active: dict[str, dict] = {}
 
-    def begin(self) -> str:
+    def begin(self, collections: dict | None = None) -> dict:
         transaction_id = uuid.uuid4().hex
-        self._active.add(transaction_id)
-        return transaction_id
+        normalized_collections = self._normalize_collections(collections)
+        transaction = {
+            "id": transaction_id,
+            "status": "running",
+            "collections": normalized_collections,
+        }
+        self._active[transaction_id] = transaction
+        return dict(transaction)
 
-    def commit(self, transaction_id: str) -> None:
-        self._active.remove(transaction_id)
+    def commit(self, transaction_id: str) -> dict:
+        transaction = self._active.pop(transaction_id)
+        result = dict(transaction)
+        result["status"] = "commit"
+        return result
 
-    def abort(self, transaction_id: str) -> None:
-        self._active.remove(transaction_id)
+    def abort(self, transaction_id: str) -> dict:
+        transaction = self._active.pop(transaction_id)
+        result = dict(transaction)
+        result["status"] = "abort"
+        return result
+
+    @staticmethod
+    def _normalize_collections(collections: dict | None) -> dict:
+        if not isinstance(collections, dict):
+            return {"read": [], "write": [], "exclusive": []}
+
+        normalized: dict[str, list[str]] = {"read": [], "write": [], "exclusive": []}
+        for mode in ("read", "write", "exclusive"):
+            value = collections.get(mode, [])
+            if isinstance(value, str):
+                normalized[mode] = [value]
+            elif isinstance(value, list):
+                normalized[mode] = [str(item) for item in value if isinstance(item, str)]
+        return normalized
 
 
 class InMemoryJobManager:

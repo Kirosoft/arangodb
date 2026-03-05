@@ -5,6 +5,10 @@ from deethoughtdb_port.transport.http_models import HttpRequest
 
 
 class ApiHandlerTests(unittest.TestCase):
+    def test_build_default_server_rejects_unknown_storage_engine(self) -> None:
+        with self.assertRaises(ValueError):
+            build_default_server(storage_engine_name="unknown")
+
     def test_version_reports_capability_metadata(self) -> None:
         runtime = build_default_server()
 
@@ -34,6 +38,7 @@ class ApiHandlerTests(unittest.TestCase):
 
         self.assertEqual(engine_response.status_code, 200)
         self.assertEqual(engine_response.body["name"], "rocksdb")
+        self.assertEqual(engine_response.body["lifecycle"], "started")
         self.assertTrue(engine_response.body["supports"]["databases"])
 
     def test_engine_stats_endpoint(self) -> None:
@@ -103,6 +108,34 @@ class ApiHandlerTests(unittest.TestCase):
         put_response = runtime.handler_factory.invoke(put_handler, put_commit)
         self.assertEqual(put_response.status_code, 200)
         self.assertEqual(put_response.body["result"]["status"], "commit")
+
+    def test_transaction_begin_tracks_collection_access_modes(self) -> None:
+        runtime = build_default_server()
+
+        begin_request = HttpRequest(
+            method="POST",
+            path="/_api/transaction/begin",
+            api_version=1,
+            body={"collections": {"read": ["r1"], "write": ["w1"], "exclusive": ["x1"]}},
+        )
+        begin_handler = runtime.handler_factory.create_handler(begin_request)
+        begin_response = runtime.handler_factory.invoke(begin_handler, begin_request)
+        self.assertEqual(begin_response.status_code, 201)
+        self.assertEqual(begin_response.body["result"]["collections"]["read"], ["r1"])
+        self.assertEqual(begin_response.body["result"]["collections"]["write"], ["w1"])
+        self.assertEqual(begin_response.body["result"]["collections"]["exclusive"], ["x1"])
+
+        transaction_id = begin_response.body["result"]["id"]
+        commit_request = HttpRequest(
+            method="POST",
+            path=f"/_api/transaction/{transaction_id}/commit",
+            api_version=1,
+        )
+        commit_handler = runtime.handler_factory.create_handler(commit_request)
+        commit_response = runtime.handler_factory.invoke(commit_handler, commit_request)
+        self.assertEqual(commit_response.status_code, 200)
+        self.assertEqual(commit_response.body["result"]["status"], "commit")
+        self.assertEqual(commit_response.body["result"]["collections"]["write"], ["w1"])
 
     def test_collection_and_document_crud(self) -> None:
         runtime = build_default_server()
@@ -214,6 +247,85 @@ class ApiHandlerTests(unittest.TestCase):
         count_response = runtime.handler_factory.invoke(count_handler, count_request)
         self.assertEqual(count_response.status_code, 200)
         self.assertEqual(count_response.body["result"]["count"], 0)
+
+    def test_collection_rename_updates_document_ids(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "rename_src"},
+        )
+        create_handler = runtime.handler_factory.create_handler(create_collection)
+        create_response = runtime.handler_factory.invoke(create_handler, create_collection)
+        self.assertEqual(create_response.status_code, 201)
+
+        insert_doc = HttpRequest(
+            method="POST",
+            path="/_api/document/rename_src",
+            api_version=1,
+            body={"value": 7},
+        )
+        insert_handler = runtime.handler_factory.create_handler(insert_doc)
+        insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+        self.assertEqual(insert_response.status_code, 201)
+        key = insert_response.body["result"]["_key"]
+
+        rename_request = HttpRequest(
+            method="PUT",
+            path="/_api/collection/rename_src/rename",
+            api_version=1,
+            body={"name": "rename_dst"},
+        )
+        rename_handler = runtime.handler_factory.create_handler(rename_request)
+        rename_response = runtime.handler_factory.invoke(rename_handler, rename_request)
+        self.assertEqual(rename_response.status_code, 200)
+        self.assertEqual(rename_response.body["result"]["name"], "rename_dst")
+
+        read_request = HttpRequest(
+            method="GET",
+            path=f"/_api/document/rename_dst/{key}",
+            api_version=1,
+        )
+        read_handler = runtime.handler_factory.create_handler(read_request)
+        read_response = runtime.handler_factory.invoke(read_handler, read_request)
+        self.assertEqual(read_response.status_code, 200)
+        self.assertEqual(read_response.body["result"]["_id"], f"rename_dst/{key}")
+
+    def test_collection_properties_roundtrip(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "props"},
+        )
+        create_handler = runtime.handler_factory.create_handler(create_collection)
+        create_response = runtime.handler_factory.invoke(create_handler, create_collection)
+        self.assertEqual(create_response.status_code, 201)
+
+        update_properties = HttpRequest(
+            method="PUT",
+            path="/_api/collection/props/properties",
+            api_version=1,
+            body={"waitForSync": True, "cacheEnabled": False},
+        )
+        update_handler = runtime.handler_factory.create_handler(update_properties)
+        update_response = runtime.handler_factory.invoke(update_handler, update_properties)
+        self.assertEqual(update_response.status_code, 200)
+        self.assertTrue(update_response.body["result"]["properties"]["waitForSync"])
+
+        read_properties = HttpRequest(
+            method="GET",
+            path="/_api/collection/props/properties",
+            api_version=1,
+        )
+        read_handler = runtime.handler_factory.create_handler(read_properties)
+        read_response = runtime.handler_factory.invoke(read_handler, read_properties)
+        self.assertEqual(read_response.status_code, 200)
+        self.assertFalse(read_response.body["result"]["properties"]["cacheEnabled"])
 
     def test_document_put_and_patch(self) -> None:
         runtime = build_default_server()
@@ -799,6 +911,76 @@ class ApiHandlerTests(unittest.TestCase):
         delete_handler = runtime.handler_factory.create_handler(delete_job)
         delete_response = runtime.handler_factory.invoke(delete_handler, delete_job)
         self.assertEqual(delete_response.status_code, 200)
+
+    def test_async_store_returns_job_id_and_stored_result(self) -> None:
+        runtime = build_default_server()
+
+        token = runtime.handle_request(
+            HttpRequest(
+                method="POST",
+                path="/_open/auth",
+                api_version=1,
+                body={"username": "root", "password": "deethoughtdb"},
+            )
+        ).body["result"]["token"]
+        headers = {"authorization": f"Bearer {token}"}
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            headers=headers,
+            body={"name": "async_docs"},
+        )
+        create_response = runtime.handle_request(create_collection)
+        self.assertEqual(create_response.status_code, 201)
+
+        async_insert = HttpRequest(
+            method="POST",
+            path="/_api/document/async_docs",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}", "x-arango-async": "store"},
+            body={"value": 9},
+        )
+        async_response = runtime.handle_request(async_insert)
+        self.assertEqual(async_response.status_code, 202)
+        self.assertIn("x-arango-async-id", async_response.headers)
+
+        job_id = async_response.headers["x-arango-async-id"]
+        get_job = HttpRequest(
+            method="GET",
+            path=f"/_api/job/{job_id}",
+            api_version=1,
+            headers=headers,
+        )
+        job_response = runtime.handle_request(get_job)
+        self.assertEqual(job_response.status_code, 200)
+        payload = job_response.body["result"]["payload"]
+        self.assertEqual(payload["response"]["statusCode"], 201)
+        self.assertIn("_key", payload["response"]["body"]["result"])
+
+    def test_async_true_returns_accepted_without_job_id(self) -> None:
+        runtime = build_default_server()
+
+        token = runtime.handle_request(
+            HttpRequest(
+                method="POST",
+                path="/_open/auth",
+                api_version=1,
+                body={"username": "root", "password": "deethoughtdb"},
+            )
+        ).body["result"]["token"]
+
+        async_request = HttpRequest(
+            method="GET",
+            path="/_api/engine",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}", "x-arango-async": "true"},
+        )
+        async_response = runtime.handle_request(async_request)
+        self.assertEqual(async_response.status_code, 202)
+        self.assertNotIn("x-arango-async-id", async_response.headers)
+        self.assertTrue(async_response.body["result"]["accepted"])
 
     def test_tasks_api_lifecycle(self) -> None:
         runtime = build_default_server()

@@ -43,13 +43,13 @@ class StorageEngine(ABC):
 
 class TransactionManager(ABC):
     @abstractmethod
-    def begin(self) -> str:
+    def begin(self, collections: dict | None = None) -> dict:
         raise NotImplementedError
 
     @abstractmethod
-    def commit(self, transaction_id: str) -> None:
+    def commit(self, transaction_id: str) -> dict:
         raise NotImplementedError
 
     @abstractmethod
-    def abort(self, transaction_id: str) -> None:
+    def abort(self, transaction_id: str) -> dict:
         raise NotImplementedError

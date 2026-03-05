@@ -17,7 +17,7 @@ from deethoughtdb_port.domain.distributed import AgencyService, ClusterService, 
 from deethoughtdb_port.observability import StructuredLogBuffer, ValidationArtifactRecorder
 from deethoughtdb_port.runtime.feature import Feature
 from deethoughtdb_port.runtime.server import ApplicationServer
-from deethoughtdb_port.storage import RocksDBEnginePort, RocksDBPortConfig
+from deethoughtdb_port.storage import RocksDBEnginePort, create_storage_engine
 from deethoughtdb_port.transport.http_models import HttpRequest, HttpResponse
 from deethoughtdb_port.transport.rest_factory import RestHandlerFactory
 from deethoughtdb_port.transport.rest_handler import RestHandler
@@ -147,6 +147,7 @@ class EngineHandler(RestHandler):
             status_code=200,
             body={
                 "name": self._storage.type_name(),
+                "lifecycle": self._storage.lifecycle_state(),
                 "supports": self._storage.get_capabilities(),
             },
         )
@@ -196,6 +197,28 @@ class CollectionHandler(RestHandler):
                     },
                 )
 
+            if len(request.suffixes) == 2 and request.suffixes[1] == "properties":
+                collection = self._storage.get_collection(database, request.suffixes[0])
+                if collection is None:
+                    return HttpResponse(
+                        status_code=404,
+                        body={
+                            "error": True,
+                            "code": 404,
+                            "errorNum": 404,
+                            "errorMessage": f"collection '{request.suffixes[0]}' not found",
+                        },
+                    )
+                return HttpResponse(
+                    status_code=200,
+                    body={
+                        "result": {
+                            "name": collection["name"],
+                            "properties": dict(collection.get("properties", {})),
+                        }
+                    },
+                )
+
             return HttpResponse(
                 status_code=200,
                 body={"result": self._storage.list_collections(database)},
@@ -215,6 +238,56 @@ class CollectionHandler(RestHandler):
             return HttpResponse(
                 status_code=200,
                 body={"result": {"dropped": request.suffixes[0], "database": database}},
+            )
+
+        if request.method == "PUT" and len(request.suffixes) == 2 and request.suffixes[1] == "rename":
+            if not isinstance(request.body, dict) or "name" not in request.body:
+                raise bad_request("collection rename expects body {'name': '<new-name>'}")
+            collection_name = request.suffixes[0]
+            try:
+                renamed = self._storage.rename_collection(database, collection_name, str(request.body["name"]))
+            except KeyError:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"collection '{collection_name}' not found",
+                    },
+                )
+            except ValueError as exc:
+                raise bad_request(str(exc)) from exc
+            return HttpResponse(status_code=200, body={"result": renamed})
+
+        if (
+            request.method in {"PUT", "PATCH"}
+            and len(request.suffixes) == 2
+            and request.suffixes[1] == "properties"
+        ):
+            if not isinstance(request.body, dict):
+                raise bad_request("collection property update expects JSON object")
+            collection_name = request.suffixes[0]
+            try:
+                updated = self._storage.update_collection_properties(database, collection_name, request.body)
+            except KeyError:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"collection '{collection_name}' not found",
+                    },
+                )
+            return HttpResponse(
+                status_code=200,
+                body={
+                    "result": {
+                        "name": updated["name"],
+                        "properties": dict(updated.get("properties", {})),
+                    }
+                },
             )
 
         if request.method in {"PUT", "POST"} and len(request.suffixes) == 2 and request.suffixes[1] == "truncate":
@@ -557,18 +630,26 @@ class TransactionHandler(RestHandler):
 
     def handle(self, request: HttpRequest) -> HttpResponse:
         if request.method == "POST" and request.path == "/_api/transaction/begin":
-            transaction_id = self._manager.begin()
-            return HttpResponse(status_code=201, body={"result": {"id": transaction_id}})
+            collections: dict | None = None
+            if request.body is not None:
+                if not isinstance(request.body, dict):
+                    raise bad_request("transaction begin expects JSON object")
+                raw_collections = request.body.get("collections")
+                if raw_collections is not None and not isinstance(raw_collections, dict):
+                    raise bad_request("transaction begin 'collections' must be an object")
+                collections = raw_collections
+            transaction = self._manager.begin(collections=collections)
+            return HttpResponse(status_code=201, body={"result": transaction})
 
         if request.method == "PUT" and request.prefix == "/_api/transaction" and len(request.suffixes) == 1:
             transaction_id = request.suffixes[0]
             try:
-                self._manager.commit(transaction_id)
+                committed = self._manager.commit(transaction_id)
             except KeyError as exc:
                 raise bad_request(f"unknown transaction id '{transaction_id}'") from exc
             return HttpResponse(
                 status_code=200,
-                body={"result": {"id": transaction_id, "status": "commit"}},
+                body={"result": committed},
             )
 
         if request.method == "POST" and (
@@ -579,14 +660,14 @@ class TransactionHandler(RestHandler):
             transaction_id, action = request.suffixes
             try:
                 if action == "commit":
-                    self._manager.commit(transaction_id)
+                    result = self._manager.commit(transaction_id)
                 else:
-                    self._manager.abort(transaction_id)
+                    result = self._manager.abort(transaction_id)
             except KeyError as exc:
                 raise bad_request(f"unknown transaction id '{transaction_id}'") from exc
             return HttpResponse(
                 status_code=200,
-                body={"result": {"id": transaction_id, "status": action}},
+                body={"result": result},
             )
 
         raise bad_request("unsupported transaction path")
@@ -1470,6 +1551,7 @@ class ServerRuntime:
         request_id = uuid4().hex
         started_ns = perf_counter_ns()
         principal = "anonymous"
+        async_mode = self._async_mode(request)
 
         self._record_request()
         try:
@@ -1478,6 +1560,8 @@ class ServerRuntime:
             principal = self._enforce_auth(request)
             handler = self.handler_factory.create_handler(request)
             response = self.handler_factory.invoke(handler, request)
+            if async_mode is not None and self._is_async_eligible(request):
+                response = self._to_async_response(request=request, response=response, mode=async_mode)
         except ApiError as exc:
             response = HttpResponse(status_code=exc.status_code, body=exc.to_payload())
 
@@ -1551,6 +1635,45 @@ class ServerRuntime:
             status_code=response.status_code,
             duration_ms=duration_ms,
             principal=principal,
+        )
+
+    @staticmethod
+    def _async_mode(request: HttpRequest) -> str | None:
+        for key in ("x-arango-async", "X-Arango-Async"):
+            value = request.headers.get(key)
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"true", "store"}:
+                    return normalized
+        return None
+
+    @staticmethod
+    def _is_async_eligible(request: HttpRequest) -> bool:
+        return not request.path.startswith("/_api/job")
+
+    def _to_async_response(self, *, request: HttpRequest, response: HttpResponse, mode: str) -> HttpResponse:
+        if mode == "true":
+            return HttpResponse(status_code=202, body={"result": {"accepted": True}})
+
+        job = self.job_manager.create(
+            payload={
+                "request": {
+                    "method": request.method,
+                    "path": request.path,
+                    "apiVersion": request.api_version,
+                },
+                "response": {
+                    "statusCode": response.status_code,
+                    "body": response.body,
+                    "headers": response.headers,
+                },
+            },
+            status="done",
+        )
+        return HttpResponse(
+            status_code=202,
+            body={"result": {"id": job["id"]}},
+            headers={"x-arango-async-id": str(job["id"]), "x-arango-async": "store"},
         )
 
     def _enforce_auth(self, request: HttpRequest) -> str:
@@ -1835,6 +1958,7 @@ def build_default_server(
     cluster_enabled: bool = True,
     artifact_dir: str | None = None,
     rocksdb_root: str | None = None,
+    storage_engine_name: str = "rocksdb",
 ) -> ServerRuntime:
     port_root = _port_root()
     default_rocksdb_root = port_root / "artifacts" / "rocksdb"
@@ -1848,9 +1972,11 @@ def build_default_server(
     transaction_manager = InMemoryTransactionManager()
     job_manager = InMemoryJobManager()
     task_manager = InMemoryTaskManager()
-    storage_engine = RocksDBEnginePort(
-        RocksDBPortConfig.from_root(rocksdb_root or default_rocksdb_root)
+    storage_engine = create_storage_engine(
+        engine_name=storage_engine_name,
+        rocksdb_root=rocksdb_root or default_rocksdb_root,
     )
+    storage_engine.start()
     auth = AuthService()
     auth.create_user("root", "deethoughtdb", is_admin=True)
     replication = ReplicationService(mode="cluster" if cluster_enabled else "single")

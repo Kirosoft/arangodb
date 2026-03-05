@@ -29,10 +29,12 @@ class RocksDBEnginePort(StorageEngineContract):
         self._recovery_state = RecoveryState.DONE
         self._replication_config: dict[str, object] = {}
         self._documents: dict[str, dict[str, dict[str, dict]]] = {}
+        self._lifecycle_state = "initialized"
 
         if self._bindings.available:
             data_file = Path(self._config.base_path) / "deethoughtdb.rocksdb"
             self._db = self._bindings.open(data_file)
+        self._lifecycle_state = "started"
 
         self.create_database("_system")
 
@@ -110,6 +112,28 @@ class RocksDBEnginePort(StorageEngineContract):
         documents.clear()
         self._wal.record(f"truncate_collection:{database}/{name}")
         return removed
+
+    def rename_collection(self, database: str, name: str, new_name: str) -> dict:
+        if database not in self._documents or name not in self._documents[database]:
+            raise KeyError(f"collection '{database}/{name}' not found")
+        if new_name in self._documents[database] and new_name != name:
+            raise ValueError(f"collection '{database}/{new_name}' already exists")
+
+        renamed = self._catalog.rename_collection(database, name, new_name)
+        documents = self._documents[database].pop(name)
+        migrated: dict[str, dict] = {}
+        for key, document in documents.items():
+            updated = dict(document)
+            updated["_id"] = f"{new_name}/{key}"
+            migrated[key] = updated
+        self._documents[database][new_name] = migrated
+        self._wal.record(f"rename_collection:{database}/{name}->{new_name}")
+        return renamed
+
+    def update_collection_properties(self, database: str, name: str, properties: dict) -> dict:
+        updated = self._catalog.update_collection_properties(database, name, properties)
+        self._wal.record(f"update_collection_properties:{database}/{name}")
+        return updated
 
     def insert_document(self, database: str, collection: str, document: dict) -> dict:
         if database not in self._documents or collection not in self._documents[database]:
@@ -224,3 +248,12 @@ class RocksDBEnginePort(StorageEngineContract):
     def remove_replication_applier_config(self) -> None:
         self._replication_config = {}
         self._wal.record("remove_replication_applier")
+
+    def start(self) -> None:
+        self._lifecycle_state = "started"
+
+    def stop(self) -> None:
+        self._lifecycle_state = "stopped"
+
+    def lifecycle_state(self) -> str:
+        return self._lifecycle_state

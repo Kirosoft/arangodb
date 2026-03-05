@@ -38,7 +38,12 @@ class RocksDBCatalog:
         existing = self.collections[database].get(name)
         if existing is not None:
             return existing
-        info = {"id": next(self._col_id), "name": name, "database": database}
+        info = {
+            "id": next(self._col_id),
+            "name": name,
+            "database": database,
+            "properties": {},
+        }
         self.collections[database][name] = info
         self.indexes[database].setdefault(name, [])
         return info
@@ -47,6 +52,39 @@ class RocksDBCatalog:
         if database in self.collections:
             self.collections[database].pop(name, None)
             self.indexes[database].pop(name, None)
+
+    def rename_collection(self, database: str, name: str, new_name: str) -> dict:
+        if database not in self.collections:
+            raise KeyError(f"database '{database}' not found")
+        if not new_name:
+            raise ValueError("new collection name must not be empty")
+        source = self.collections[database].get(name)
+        if source is None:
+            raise KeyError(f"collection '{database}/{name}' not found")
+        if new_name in self.collections[database] and new_name != name:
+            raise ValueError(f"collection '{database}/{new_name}' already exists")
+        renamed = dict(source)
+        renamed["name"] = new_name
+        self.collections[database].pop(name)
+        self.collections[database][new_name] = renamed
+        if name in self.indexes.get(database, {}):
+            self.indexes[database][new_name] = self.indexes[database].pop(name)
+            for index in self.indexes[database][new_name]:
+                index["collection"] = new_name
+                index["id"] = str(index["id"]).replace(f"{name}/", f"{new_name}/", 1)
+        return renamed
+
+    def update_collection_properties(self, database: str, name: str, properties: dict) -> dict:
+        if database not in self.collections:
+            raise KeyError(f"database '{database}' not found")
+        collection = self.collections[database].get(name)
+        if collection is None:
+            raise KeyError(f"collection '{database}/{name}' not found")
+
+        merged_properties = dict(collection.get("properties", {}))
+        merged_properties.update(properties)
+        collection["properties"] = merged_properties
+        return dict(collection)
 
     def create_index(self, database: str, collection: str, definition: dict) -> dict:
         if database not in self.collections or collection not in self.collections[database]:

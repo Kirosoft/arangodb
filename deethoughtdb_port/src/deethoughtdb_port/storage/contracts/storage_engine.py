@@ -66,6 +66,14 @@ class StorageEngineContract(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def rename_collection(self, database: str, name: str, new_name: str) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
+    def update_collection_properties(self, database: str, name: str, properties: dict) -> dict:
+        raise NotImplementedError
+
+    @abstractmethod
     def insert_document(self, database: str, collection: str, document: dict) -> dict:
         raise NotImplementedError
 
@@ -147,4 +155,16 @@ class StorageEngineContract(ABC):
 
     @abstractmethod
     def remove_replication_applier_config(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def start(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def stop(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def lifecycle_state(self) -> str:
         raise NotImplementedError
