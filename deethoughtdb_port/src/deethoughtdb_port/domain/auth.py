@@ -8,6 +8,7 @@ class AuthService:
     def __init__(self) -> None:
         self._users: dict[str, dict[str, object]] = {}
         self._tokens: dict[str, dict[str, object]] = {}
+        self._reload_version = 0
 
     def create_user(self, username: str, password: str, is_admin: bool = False) -> None:
         self._users[username] = {"password": password, "is_admin": is_admin}
@@ -60,3 +61,7 @@ class AuthService:
         if user is None:
             return False
         return bool(user["is_admin"])
+
+    def reload_permissions(self) -> int:
+        self._reload_version += 1
+        return self._reload_version

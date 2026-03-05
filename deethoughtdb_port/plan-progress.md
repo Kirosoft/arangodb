@@ -161,9 +161,9 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 - [x] Token auth and user manager implemented.
 - [x] Root user bootstrap behavior implemented.
-- [ ] Auth reload and permission checks implemented. `[next]`
+- [x] Auth reload and permission checks implemented.
 - [x] Admin APIs in scope implemented (`status`, `server`, `log`, `metrics`, `shutdown`, etc.).
-- [ ] Security defaults and UTF-8/input validation policy implemented. `[next]`
+- [x] Security defaults and UTF-8/input validation policy implemented.
 
 ### Exit Gate
 
@@ -201,7 +201,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Metrics families emitted for server/scheduler/replication/cluster. `[next]`
+- [x] Metrics families emitted for server/scheduler/replication/cluster.
 - [x] Statistics endpoints and request accounting aligned.
 - [x] Crash/reporting artifacts capture integrated.
 - [x] Runbook artifact collection paths validated.
@@ -242,7 +242,7 @@ Apply in every phase after initial bootstrap:
 
 - [x] No new unexplained regression in previously green in-scope suites.
 - [x] Required artifacts produced and archived for each run.
-- [ ] Risk register updated for blocking failures. `[next]`
+- [x] Risk register updated for blocking failures.
 - [ ] Waivers (if any) include owner, due date, mitigation, rollback. `[deferred]`
 
 ---
@@ -294,7 +294,7 @@ Release is not certified until all required approvers sign off.
 
 ## Validation status
 
-- Full package suite: **68 passed** (`python -m pytest -q`)
+- Full package suite: **69 passed** (`python -m pytest -q`)
 - Strict live suite on isolated target: **5 passed** (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
 - Live endpoint: `http://127.0.0.1:8530` (container `dth-live-8530`)
 
@@ -321,6 +321,10 @@ Release is not certified until all required approvers sign off.
 - Added cluster-disabled gating test coverage for agency API
 - Added cluster `move-shard` and `rebalance` operational coordination endpoints
 - Added distributed resilience/restart-style coverage in replication/cluster tests
+- Added admin auth reload endpoint and permission refresh behavior
+- Added UTF-8 payload validation policy with API error handling
+- Added metric families for server/scheduler/replication/cluster in admin metrics/statistics
+- Added `deethoughtdb_port/risk-register.md` for blocking risk tracking
 
 ## Commit timeline (latest first)
 

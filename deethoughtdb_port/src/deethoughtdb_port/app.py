@@ -74,6 +74,25 @@ class CatchAllHandler(RestHandler):
         )
 
 
+def _validate_utf8_payload(value: object) -> None:
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            raise bad_request("payload contains invalid UTF-8 string") from exc
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                _validate_utf8_payload(key)
+            _validate_utf8_payload(item)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_utf8_payload(item)
+        return
+
+
 class DatabaseHandler(RestHandler):
     def __init__(self, storage: RocksDBEnginePort) -> None:
         self._storage = storage
@@ -755,6 +774,7 @@ class AdminMetricsHandler(RestHandler):
                     "responsesByStatus": self._metrics["responses_by_status"],
                     "requestsByPath": self._metrics["requests_by_path"],
                     "latencyByPathMs": self._metrics["latency_by_path_ms"],
+                    "families": self._metrics["families"],
                 }
             },
         )
@@ -829,6 +849,7 @@ class AdminStatisticsHandler(RestHandler):
                     "requestsByPath": by_path,
                     "latencyByPathMs": latency,
                     "pathsTracked": len(by_path),
+                    "families": self._metrics["families"],
                 }
             },
         )
@@ -959,6 +980,20 @@ class AdminRoutingReloadHandler(RestHandler):
         return HttpResponse(
             status_code=200,
             body={"result": {"routesReloaded": True}},
+        )
+
+
+class AdminAuthReloadHandler(RestHandler):
+    def __init__(self, auth: AuthService) -> None:
+        self._auth = auth
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if request.method != "POST":
+            raise bad_request("/_admin/auth/reload expects POST")
+        version = self._auth.reload_permissions()
+        return HttpResponse(
+            status_code=200,
+            body={"result": {"reloaded": True, "version": version}},
         )
 
 
@@ -1438,6 +1473,8 @@ class ServerRuntime:
 
         self._record_request()
         try:
+            if request.body is not None:
+                _validate_utf8_payload(request.body)
             principal = self._enforce_auth(request)
             handler = self.handler_factory.create_handler(request)
             response = self.handler_factory.invoke(handler, request)
@@ -1457,6 +1494,8 @@ class ServerRuntime:
 
     def _record_request(self) -> None:
         self.metrics["requests_total"] = int(self.metrics["requests_total"]) + 1
+        families = self.metrics["families"]
+        families["server"]["requests"] += 1
 
     def _record_response(self, path: str, status_code: int, duration_ms: int) -> None:
         by_status = self.metrics["responses_by_status"]
@@ -1471,6 +1510,16 @@ class ServerRuntime:
         entry["totalMs"] += duration_ms
         entry["avgMs"] = round(entry["totalMs"] / entry["count"], 2)
         latency[path] = entry
+
+        families = self.metrics["families"]
+        if path.startswith("/_api/replication"):
+            families["replication"]["requests"] += 1
+        if path.startswith("/_admin/cluster"):
+            families["cluster"]["requests"] += 1
+        scheduler = families["scheduler"]
+        scheduler["latencyMsTotal"] += duration_ms
+        scheduler["samples"] += 1
+        scheduler["latencyMsAvg"] = round(scheduler["latencyMsTotal"] / scheduler["samples"], 2)
 
     def _record_observability(
         self,
@@ -1680,6 +1729,13 @@ def _admin_routing_reload_handler_ctor():
     return _build
 
 
+def _admin_auth_reload_handler_ctor(auth: AuthService):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return AdminAuthReloadHandler(auth)
+
+    return _build
+
+
 def _replication_handler_ctor(replication: ReplicationService, storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
         return ReplicationHandler(replication, storage)
@@ -1806,6 +1862,12 @@ def build_default_server(
         "responses_by_status": {},
         "requests_by_path": {},
         "latency_by_path_ms": {},
+        "families": {
+            "server": {"requests": 0},
+            "scheduler": {"samples": 0, "latencyMsTotal": 0, "latencyMsAvg": 0.0},
+            "replication": {"requests": 0},
+            "cluster": {"requests": 0},
+        },
     }
     logger = StructuredLogBuffer()
     recorder = ValidationArtifactRecorder(
@@ -1861,6 +1923,11 @@ def build_default_server(
     handler_factory.add_handler(
         "/_admin/routing/reload",
         _admin_routing_reload_handler_ctor(),
+        [1, 2],
+    )
+    handler_factory.add_handler(
+        "/_admin/auth/reload",
+        _admin_auth_reload_handler_ctor(auth),
         [1, 2],
     )
     handler_factory.add_prefix_handler("/_admin/cluster", _admin_cluster_handler_ctor(cluster), [1, 2])

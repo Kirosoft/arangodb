@@ -112,6 +112,9 @@ class AuthAndAdminTests(unittest.TestCase):
         metrics_response = runtime.handle_request(metrics_request)
         self.assertEqual(metrics_response.status_code, 200)
         self.assertGreaterEqual(metrics_response.body["result"]["requestsTotal"], 1)
+        self.assertIn("families", metrics_response.body["result"])
+        self.assertIn("server", metrics_response.body["result"]["families"])
+        self.assertIn("scheduler", metrics_response.body["result"]["families"])
 
         time_request = HttpRequest(
             method="GET",
@@ -217,6 +220,17 @@ class AuthAndAdminTests(unittest.TestCase):
         routing_reload_response = runtime.handle_request(routing_reload_request)
         self.assertEqual(routing_reload_response.status_code, 200)
         self.assertTrue(routing_reload_response.body["result"]["routesReloaded"])
+
+        auth_reload_request = HttpRequest(
+            method="POST",
+            path="/_admin/auth/reload",
+            api_version=1,
+            headers={"authorization": f"Bearer {token}"},
+        )
+        auth_reload_response = runtime.handle_request(auth_reload_request)
+        self.assertEqual(auth_reload_response.status_code, 200)
+        self.assertTrue(auth_reload_response.body["result"]["reloaded"])
+        self.assertGreaterEqual(auth_reload_response.body["result"]["version"], 1)
 
         admin_version_request = HttpRequest(
             method="GET",
@@ -338,6 +352,19 @@ class AuthAndAdminTests(unittest.TestCase):
         )
         denied_response = runtime.handle_request(denied_request)
         self.assertEqual(denied_response.status_code, 403)
+
+    def test_invalid_utf8_payload_rejected(self) -> None:
+        runtime = build_default_server()
+
+        bad_login = HttpRequest(
+            method="POST",
+            path="/_open/auth",
+            api_version=1,
+            body={"username": "root", "password": "deethoughtdb", "note": "\udcff"},
+        )
+        bad_login_response = runtime.handle_request(bad_login)
+        self.assertEqual(bad_login_response.status_code, 400)
+        self.assertIn("invalid UTF-8", bad_login_response.body["errorMessage"])
 
 
 if __name__ == "__main__":
