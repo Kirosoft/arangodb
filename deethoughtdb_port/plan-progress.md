@@ -316,6 +316,7 @@ Release is not certified until all required approvers sign off.
 
 ## Commit timeline (latest first)
 
+- `6e9454c6eb` Advance Milestone 2 and 3 parity endpoints
 - `7c74d57d3e` Refresh migration progress checkpoint
 - `2b13c6ba69` Add local plan and progress artifacts in port dir
 - `2ed54d3c64` Document isolated live test workflow on port 8530
