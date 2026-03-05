@@ -212,6 +212,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 - [x] Gate A/B observability suites green.
 - [ ] Operational dashboards and alerts validated. `[blocked]`
 
+### Operational Validation Checklist (WL-002)
+
+Use this checklist to close the blocked Phase 8 exit item above.
+
+- [ ] Dashboard panels verified for all emitted families (`server`, `scheduler`, `replication`, `cluster`).
+- [ ] Alert rules configured and evaluated for critical signals (availability, latency, replication/cluster health).
+- [ ] Dry-run or synthetic incident performed with captured alert behavior.
+- [ ] Evidence archived under `deethoughtdb_port/artifacts/validation/ops/` (screenshots, rule exports, run notes).
+- [ ] SRE/operations owner sign-off recorded in Section 5.
+
 ---
 
 ## Phase 9 — Ecosystem Compatibility and Certification
