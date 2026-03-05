@@ -14,6 +14,7 @@ from deethoughtdb_port.domain.inmemory import (
     InMemoryTransactionManager,
 )
 from deethoughtdb_port.domain.distributed import AgencyService, ClusterService, ReplicationService
+from deethoughtdb_port.domain.distributed import Replication2Service
 from deethoughtdb_port.observability import StructuredLogBuffer, ValidationArtifactRecorder
 from deethoughtdb_port.runtime.feature import Feature
 from deethoughtdb_port.runtime.server import ApplicationServer
@@ -1218,6 +1219,35 @@ class AgencyHandler(RestHandler):
         raise bad_request("unsupported agency path")
 
 
+class Replication2Handler(RestHandler):
+    def __init__(self, replication2: Replication2Service) -> None:
+        self._replication2 = replication2
+
+    def handle(self, request: HttpRequest) -> HttpResponse:
+        if not self._replication2.enabled:
+            raise bad_request("replication2 API not enabled")
+
+        if request.method == "GET" and request.path == "/_api/replication2/state":
+            return HttpResponse(status_code=200, body={"result": self._replication2.state()})
+
+        if request.method == "GET" and request.path == "/_api/replication2/logger-state":
+            return HttpResponse(status_code=200, body={"result": self._replication2.logger_state()})
+
+        if request.method == "POST" and request.path == "/_api/replication2/append-entries":
+            if not isinstance(request.body, dict):
+                raise bad_request("replication2 append-entries expects JSON body")
+            entries = request.body.get("entries", [])
+            if not isinstance(entries, list):
+                raise bad_request("replication2 append-entries expects entries list")
+            normalized_entries = [entry for entry in entries if isinstance(entry, dict)]
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._replication2.append_entries(normalized_entries)},
+            )
+
+        raise bad_request("unsupported replication2 path")
+
+
 class WalHandler(RestHandler):
     def __init__(self, storage: RocksDBEnginePort) -> None:
         self._storage = storage
@@ -1543,6 +1573,7 @@ class ServerRuntime:
     auth: AuthService
     metrics: dict[str, object]
     replication: ReplicationService
+    replication2: Replication2Service
     cluster: ClusterService
     logger: StructuredLogBuffer
     artifact_recorder: ValidationArtifactRecorder
@@ -1873,6 +1904,13 @@ def _agency_handler_ctor(agency: AgencyService):
     return _build
 
 
+def _replication2_handler_ctor(replication2: Replication2Service):
+    def _build(_data: dict | None = None) -> RestHandler:
+        return Replication2Handler(replication2)
+
+    return _build
+
+
 def _wal_handler_ctor(storage: RocksDBEnginePort):
     def _build(_data: dict | None = None) -> RestHandler:
         return WalHandler(storage)
@@ -1959,6 +1997,7 @@ def build_default_server(
     artifact_dir: str | None = None,
     rocksdb_root: str | None = None,
     storage_engine_name: str = "rocksdb",
+    replication2_enabled: bool = False,
 ) -> ServerRuntime:
     port_root = _port_root()
     default_rocksdb_root = port_root / "artifacts" / "rocksdb"
@@ -1980,6 +2019,7 @@ def build_default_server(
     auth = AuthService()
     auth.create_user("root", "deethoughtdb", is_admin=True)
     replication = ReplicationService(mode="cluster" if cluster_enabled else "single")
+    replication2 = Replication2Service(enabled=replication2_enabled)
     cluster = ClusterService(role="coordinator" if cluster_enabled else "single", enabled=cluster_enabled)
     agency = AgencyService(enabled=cluster_enabled)
 
@@ -2092,6 +2132,9 @@ def build_default_server(
         "/_api/agency", _agency_handler_ctor(agency), [1, 2]
     )
     handler_factory.add_prefix_handler(
+        "/_api/replication2", _replication2_handler_ctor(replication2), [1, 2]
+    )
+    handler_factory.add_prefix_handler(
         "/_api/wal", _wal_handler_ctor(storage_engine), [1, 2]
     )
     handler_factory.add_prefix_handler("/_api/job", _job_handler_ctor(job_manager), [1, 2])
@@ -2114,6 +2157,7 @@ def build_default_server(
         auth=auth,
         metrics=metrics,
         replication=replication,
+        replication2=replication2,
         cluster=cluster,
         logger=logger,
         artifact_recorder=recorder,

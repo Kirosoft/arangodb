@@ -184,7 +184,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 - [x] Agency CAS and callback patterns implemented.
 - [x] Maintenance and shard leadership flows implemented.
 - [x] Legacy replication sync/applier behaviors implemented.
-- [ ] Replication2 log/state-machine APIs implemented (feature-gated). `[deferred]`
+- [x] Replication2 log/state-machine APIs implemented (feature-gated).
 
 ### Exit Gate
 
@@ -294,7 +294,7 @@ Release is not certified until all required approvers sign off.
 
 ## Validation status
 
-- Full package suite: **77 passed** (`python -m pytest -q`)
+- Full package suite: **79 passed** (`python -m pytest -q`)
 - Strict live suite on isolated target: **5 passed** (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
 - Live endpoint: `http://127.0.0.1:8530` (container `dth-live-8530`)
 
@@ -334,6 +334,8 @@ Release is not certified until all required approvers sign off.
 - Created baseline parity tag `deethoughtdb-parity-baseline-20260305` at `44fa8b5583b5`
 - Added runtime async request pathways via `x-arango-async` (`true` and `store`)
 - Added async API tests covering job-id retrieval and accepted-mode behavior
+- Added feature-gated Replication2 API surface (`state`, `logger-state`, `append-entries`)
+- Added Replication2 tests for disabled gating and log progression semantics
 
 ## Commit timeline (latest first)
 

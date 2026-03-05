@@ -121,6 +121,57 @@ class ReplicationAndClusterTests(unittest.TestCase):
         delete_response = runtime.handle_request(delete_request)
         self.assertEqual(delete_response.status_code, 200)
 
+    def test_replication2_requires_feature_flag(self) -> None:
+        runtime = build_default_server(cluster_enabled=True, replication2_enabled=False)
+        token = self._token(runtime)
+        headers = {"authorization": f"Bearer {token}"}
+
+        state_request = HttpRequest(
+            method="GET",
+            path="/_api/replication2/state",
+            api_version=1,
+            headers=headers,
+        )
+        state_response = runtime.handle_request(state_request)
+        self.assertEqual(state_response.status_code, 400)
+
+    def test_replication2_state_and_append_entries(self) -> None:
+        runtime = build_default_server(cluster_enabled=True, replication2_enabled=True)
+        token = self._token(runtime)
+        headers = {"authorization": f"Bearer {token}"}
+
+        state_request = HttpRequest(
+            method="GET",
+            path="/_api/replication2/state",
+            api_version=1,
+            headers=headers,
+        )
+        state_response = runtime.handle_request(state_request)
+        self.assertEqual(state_response.status_code, 200)
+        self.assertEqual(state_response.body["result"]["role"], "leader")
+
+        logger_request = HttpRequest(
+            method="GET",
+            path="/_api/replication2/logger-state",
+            api_version=1,
+            headers=headers,
+        )
+        logger_response = runtime.handle_request(logger_request)
+        self.assertEqual(logger_response.status_code, 200)
+        self.assertEqual(logger_response.body["result"]["commitIndex"], 0)
+
+        append_request = HttpRequest(
+            method="POST",
+            path="/_api/replication2/append-entries",
+            api_version=1,
+            headers=headers,
+            body={"entries": [{"index": 1}, {"index": 2}]},
+        )
+        append_response = runtime.handle_request(append_request)
+        self.assertEqual(append_response.status_code, 200)
+        self.assertEqual(append_response.body["result"]["applied"], 2)
+        self.assertEqual(append_response.body["result"]["commitIndex"], 2)
+
     def test_cluster_health_requires_cluster_enabled(self) -> None:
         runtime = build_default_server(cluster_enabled=False)
         token = self._token(runtime)

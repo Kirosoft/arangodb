@@ -204,3 +204,44 @@ class AgencyService:
         self._store[key] = new_value
         self._index += 1
         return {"applied": True, "index": self._index, "current": new_value}
+
+
+class Replication2Service:
+    def __init__(self, enabled: bool = False) -> None:
+        self._enabled = enabled
+        self._term = 1
+        self._commit_index = 0
+        self._last_applied = 0
+        self._role = "leader" if enabled else "inactive"
+        self._participants: list[str] = ["PRMR-1", "PRMR-2"] if enabled else []
+
+    @property
+    def enabled(self) -> bool:
+        return self._enabled
+
+    def state(self) -> dict[str, object]:
+        return {
+            "term": self._term,
+            "role": self._role,
+            "commitIndex": self._commit_index,
+            "lastApplied": self._last_applied,
+            "participants": list(self._participants),
+        }
+
+    def logger_state(self) -> dict[str, object]:
+        return {
+            "term": self._term,
+            "commitIndex": self._commit_index,
+            "spearhead": self._commit_index,
+            "running": self._enabled,
+        }
+
+    def append_entries(self, entries: list[dict]) -> dict[str, object]:
+        applied = len(entries)
+        self._commit_index += applied
+        self._last_applied = self._commit_index
+        return {
+            "applied": applied,
+            "commitIndex": self._commit_index,
+            "lastApplied": self._last_applied,
+        }
