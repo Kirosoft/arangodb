@@ -63,6 +63,14 @@ class ReplicationService:
             "serverId": self._server_id,
         }
 
+    def sync(self) -> dict[str, object]:
+        self._state.last_tick += 1
+        return {
+            "lastLogTick": self._state.last_tick,
+            "barrierId": self._state.last_tick,
+            "serverId": self._server_id,
+        }
+
 
 class ClusterService:
     def __init__(self, role: str = "single", enabled: bool = False) -> None:
@@ -73,6 +81,7 @@ class ClusterService:
             "PRMR-1": "GOOD",
             "CRDN-1": "GOOD",
         }
+        self._heartbeat_seq = 0
 
     @property
     def enabled(self) -> bool:
@@ -103,4 +112,22 @@ class ClusterService:
             "coordinators": coordinators,
             "dbservers": dbservers,
             "total": len(self._servers),
+        }
+
+    def topology(self) -> dict[str, object]:
+        coordinators = sorted(server for server in self._servers if server.startswith("CRDN"))
+        dbservers = sorted(server for server in self._servers if server.startswith("PRMR"))
+        return {
+            "coordinators": coordinators,
+            "dbservers": dbservers,
+            "statuses": dict(self._servers),
+        }
+
+    def record_heartbeat(self, server_id: str, status: str = "GOOD") -> dict[str, object]:
+        self._heartbeat_seq += 1
+        self._servers[server_id] = status
+        return {
+            "serverId": server_id,
+            "status": status,
+            "heartbeatSeq": self._heartbeat_seq,
         }

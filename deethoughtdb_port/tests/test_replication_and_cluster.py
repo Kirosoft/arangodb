@@ -91,6 +91,17 @@ class ReplicationAndClusterTests(unittest.TestCase):
         self.assertEqual(server_id_response.status_code, 200)
         self.assertIn("serverId", server_id_response.body)
 
+        sync_request = HttpRequest(
+            method="POST",
+            path="/_api/replication/sync",
+            api_version=1,
+            headers=headers,
+            body={},
+        )
+        sync_response = runtime.handle_request(sync_request)
+        self.assertEqual(sync_response.status_code, 200)
+        self.assertIn("lastLogTick", sync_response.body["result"])
+
         stop_request = HttpRequest(
             method="PUT",
             path="/_api/replication/applier-stop",
@@ -179,6 +190,38 @@ class ReplicationAndClusterTests(unittest.TestCase):
         maintenance_put_response = runtime.handle_request(maintenance_put)
         self.assertEqual(maintenance_put_response.status_code, 200)
         self.assertTrue(maintenance_put_response.body["result"]["enabled"])
+
+        endpoints_request = HttpRequest(
+            method="GET",
+            path="/_admin/cluster/endpoints",
+            api_version=1,
+            headers=headers,
+        )
+        endpoints_response = runtime.handle_request(endpoints_request)
+        self.assertEqual(endpoints_response.status_code, 200)
+        self.assertIn("coordinators", endpoints_response.body["result"])
+        self.assertIn("dbservers", endpoints_response.body["result"])
+
+        heartbeat_request = HttpRequest(
+            method="POST",
+            path="/_admin/cluster/heartbeat",
+            api_version=1,
+            headers=headers,
+            body={"serverId": "PRMR-2", "status": "GOOD"},
+        )
+        heartbeat_response = runtime.handle_request(heartbeat_request)
+        self.assertEqual(heartbeat_response.status_code, 200)
+        self.assertEqual(heartbeat_response.body["result"]["serverId"], "PRMR-2")
+
+        maintenance_delete = HttpRequest(
+            method="DELETE",
+            path="/_admin/cluster/maintenance",
+            api_version=1,
+            headers=headers,
+        )
+        maintenance_delete_response = runtime.handle_request(maintenance_delete)
+        self.assertEqual(maintenance_delete_response.status_code, 200)
+        self.assertFalse(maintenance_delete_response.body["result"]["enabled"])
 
 
 if __name__ == "__main__":

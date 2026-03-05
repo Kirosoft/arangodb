@@ -1006,6 +1006,12 @@ class ReplicationHandler(RestHandler):
                 body={"serverId": self._replication.server_id()},
             )
 
+        if request.method == "POST" and request.path == "/_api/replication/sync":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._replication.sync()},
+            )
+
         if request.path == "/_api/replication/applier-config":
             if request.method == "GET":
                 return HttpResponse(
@@ -1194,6 +1200,24 @@ class AdminClusterHandler(RestHandler):
                 body={"result": self._cluster.number_of_servers()},
             )
 
+        if request.method == "GET" and request.path == "/_admin/cluster/endpoints":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._cluster.topology()},
+            )
+
+        if request.method == "POST" and request.path == "/_admin/cluster/heartbeat":
+            if not isinstance(request.body, dict):
+                raise bad_request("cluster heartbeat expects JSON object")
+            server_id = str(request.body.get("serverId", "")).strip()
+            if not server_id:
+                raise bad_request("cluster heartbeat requires serverId")
+            status = str(request.body.get("status", "GOOD"))
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._cluster.record_heartbeat(server_id=server_id, status=status)},
+            )
+
         if request.path == "/_admin/cluster/maintenance":
             if request.method == "GET":
                 return HttpResponse(
@@ -1208,6 +1232,12 @@ class AdminClusterHandler(RestHandler):
                     status_code=200,
                     body={"result": {"enabled": self._cluster.set_maintenance(enabled)}},
                 )
+
+        if request.method == "DELETE" and request.path == "/_admin/cluster/maintenance":
+            return HttpResponse(
+                status_code=200,
+                body={"result": {"enabled": self._cluster.set_maintenance(False)}},
+            )
 
         raise bad_request("unsupported cluster path")
 
