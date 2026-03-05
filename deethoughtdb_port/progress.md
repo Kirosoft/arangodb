@@ -5,7 +5,8 @@ _Last updated: 2026-03-05_
 ## Summary
 
 Migration is active and advancing with validated incremental parity slices.
-Recent work focused on admin-plane parity and live RocksDB integration reliability.
+Recent work focused on admin-plane parity, live RocksDB integration reliability,
+and in-port migration reporting artifacts.
 
 ## Validation status
 
@@ -22,9 +23,11 @@ Recent work focused on admin-plane parity and live RocksDB integration reliabili
 - Added `/_admin/routing/reload`
 - Hardened live integration tests for ArangoDB response/endpoint variants
 - Documented isolated live test workflow on port 8530
+- Added local `deethoughtdb_port/plan.md` and `deethoughtdb_port/progress.md` artifacts
 
 ## Recent commits (latest first)
 
+- `2b13c6ba69` Add local plan and progress artifacts in port dir
 - `2ed54d3c64` Document isolated live test workflow on port 8530
 - `ce99c58cdf` Harden live integration tests for ArangoDB variants
 - `18ebd729ca` Add admin routing reload endpoint
