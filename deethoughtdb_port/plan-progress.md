@@ -4,6 +4,12 @@ _Last updated: 2026-03-05_
 
 This document consolidates the complete phased migration plan and the latest execution progress for the `deethoughtdb_port` workstream.
 
+Status tags for unchecked items:
+
+- `[next]` planned in active implementation sequence
+- `[blocked]` requires external sign-off/system/dependency
+- `[deferred]` intentionally postponed to later phase
+
 ## 0) Objective
 
 Port the `arangod` backend core to the new runtime while preserving backend/API behavior within the agreed scope:
@@ -47,16 +53,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Scope document approved (in-scope/out-of-scope).
+- [ ] Scope document approved (in-scope/out-of-scope). `[blocked]`
 - [x] Architecture spec copied/approved in this worktree.
 - [x] Validation matrix version pinned.
-- [ ] Runbook approved by backend, cluster, storage, release owners.
-- [ ] Baseline commit SHA tagged for parity comparison.
+- [ ] Runbook approved by backend, cluster, storage, release owners. `[blocked]`
+- [ ] Baseline commit SHA tagged for parity comparison. `[next]`
 
 ### Exit Gate
 
-- [ ] All setup checklist items complete.
-- [ ] Sign-off from architecture + release management.
+- [ ] All setup checklist items complete. `[blocked]`
+- [ ] Sign-off from architecture + release management. `[blocked]`
 
 ---
 
@@ -112,8 +118,8 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [x] Database/collection/view/index metadata models implemented.
-- [ ] DDL lifecycle operations implemented (create/change/rename/drop).
-- [ ] Storage engine selector and engine lifecycle hooks implemented.
+- [ ] DDL lifecycle operations implemented (create/change/rename/drop). `[next]`
+- [ ] Storage engine selector and engine lifecycle hooks implemented. `[next]`
 - [x] Recovery state and capability/statistics exposure implemented.
 - [x] RocksDB integration interface wired (internals excluded from reimplementation).
 
@@ -133,10 +139,10 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 ### Checklist
 
 - [x] Transaction begin/commit/abort/finish implemented.
-- [ ] Collection enrollment and lock/access mode semantics implemented.
-- [ ] CRUD paths implemented (`document`, `insert`, `update`, `replace`, `remove`, `truncate`).
+- [ ] Collection enrollment and lock/access mode semantics implemented. `[next]`
+- [ ] CRUD paths implemented (`document`, `insert`, `update`, `replace`, `remove`, `truncate`). `[next]`
 - [x] Revision/precondition/conflict behavior implemented.
-- [ ] Async operation pathways implemented where required.
+- [ ] Async operation pathways implemented where required. `[deferred]`
 
 ### Exit Gate
 
@@ -155,14 +161,14 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 - [x] Token auth and user manager implemented.
 - [x] Root user bootstrap behavior implemented.
-- [ ] Auth reload and permission checks implemented.
+- [ ] Auth reload and permission checks implemented. `[next]`
 - [x] Admin APIs in scope implemented (`status`, `server`, `log`, `metrics`, `shutdown`, etc.).
-- [ ] Security defaults and UTF-8/input validation policy implemented.
+- [ ] Security defaults and UTF-8/input validation policy implemented. `[next]`
 
 ### Exit Gate
 
 - [x] Gate A auth/admin suites green.
-- [ ] No policy bypass regressions.
+- [ ] No policy bypass regressions. `[blocked]`
 
 ---
 
@@ -174,16 +180,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Cluster topology state and heartbeat behaviors implemented.
-- [ ] Agency CAS and callback patterns implemented.
-- [ ] Maintenance and shard leadership flows implemented.
+- [ ] Cluster topology state and heartbeat behaviors implemented. `[next]`
+- [ ] Agency CAS and callback patterns implemented. `[next]`
+- [ ] Maintenance and shard leadership flows implemented. `[next]`
 - [x] Legacy replication sync/applier behaviors implemented.
-- [ ] Replication2 log/state-machine APIs implemented (feature-gated).
+- [ ] Replication2 log/state-machine APIs implemented (feature-gated). `[deferred]`
 
 ### Exit Gate
 
-- [ ] Gate B replication/cluster/resilience/restart suites green.
-- [ ] No unexplained replication correctness regressions.
+- [ ] Gate B replication/cluster/resilience/restart suites green. `[blocked]`
+- [ ] No unexplained replication correctness regressions. `[blocked]`
 
 ---
 
@@ -195,16 +201,16 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] Metrics families emitted for server/scheduler/replication/cluster.
+- [ ] Metrics families emitted for server/scheduler/replication/cluster. `[next]`
 - [x] Statistics endpoints and request accounting aligned.
 - [x] Crash/reporting artifacts capture integrated.
 - [x] Runbook artifact collection paths validated.
-- [ ] Flake detection and retry policies established.
+- [ ] Flake detection and retry policies established. `[next]`
 
 ### Exit Gate
 
 - [x] Gate A/B observability suites green.
-- [ ] Operational dashboards and alerts validated.
+- [ ] Operational dashboards and alerts validated. `[blocked]`
 
 ---
 
@@ -216,17 +222,17 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 ### Checklist
 
-- [ ] `tests/arangojs.yml` executed and passing (or waived with risk acceptance).
-- [ ] `tests/go.yml` executed and passing.
-- [ ] `tests/java.yml` executed and passing.
-- [ ] `tests/py.yml` and `tests/py-async.yml` executed and passing.
-- [ ] `tests/kafka.yml`, `tests/spark-ds.yml`, `tests/spring-data.yml`, `tests/tinkerpop.yml` executed and passing.
-- [ ] Gate C runs documented (AQL/V8/UI) with exclusion-only failures.
+- [ ] `tests/arangojs.yml` executed and passing (or waived with risk acceptance). `[blocked]`
+- [ ] `tests/go.yml` executed and passing. `[blocked]`
+- [ ] `tests/java.yml` executed and passing. `[blocked]`
+- [ ] `tests/py.yml` and `tests/py-async.yml` executed and passing. `[blocked]`
+- [ ] `tests/kafka.yml`, `tests/spark-ds.yml`, `tests/spring-data.yml`, `tests/tinkerpop.yml` executed and passing. `[blocked]`
+- [ ] Gate C runs documented (AQL/V8/UI) with exclusion-only failures. `[deferred]`
 
 ### Exit Gate
 
-- [ ] Certification packet complete (artifacts + waiver ledger + sign-offs).
-- [ ] Final validity decision == VALID (per runbook decision rule).
+- [ ] Certification packet complete (artifacts + waiver ledger + sign-offs). `[blocked]`
+- [ ] Final validity decision == VALID (per runbook decision rule). `[blocked]`
 
 ---
 
@@ -236,8 +242,8 @@ Apply in every phase after initial bootstrap:
 
 - [x] No new unexplained regression in previously green in-scope suites.
 - [x] Required artifacts produced and archived for each run.
-- [ ] Risk register updated for blocking failures.
-- [ ] Waivers (if any) include owner, due date, mitigation, rollback.
+- [ ] Risk register updated for blocking failures. `[next]`
+- [ ] Waivers (if any) include owner, due date, mitigation, rollback. `[deferred]`
 
 ---
 
@@ -250,18 +256,18 @@ Apply in every phase after initial bootstrap:
 
 ### M2 (end Phase 5)
 
-- [ ] Core backend data plane complete.
+- [ ] Core backend data plane complete. `[next]`
 - [x] Gate A mostly green except tracked residuals.
 
 ### M3 (end Phase 7)
 
-- [ ] Distributed behavior complete.
-- [ ] Gate B near-green with no correctness blockers.
+- [ ] Distributed behavior complete. `[next]`
+- [ ] Gate B near-green with no correctness blockers. `[blocked]`
 
 ### M4 (end Phase 9)
 
-- [ ] Ecosystem compatibility complete.
-- [ ] Final release certification complete.
+- [ ] Ecosystem compatibility complete. `[blocked]`
+- [ ] Final release certification complete. `[blocked]`
 
 ---
 
@@ -269,11 +275,11 @@ Apply in every phase after initial bootstrap:
 
 Required approvals:
 
-- [ ] Backend port lead
-- [ ] Storage/transaction owner
-- [ ] Cluster/replication owner
-- [ ] SRE/operations owner
-- [ ] Release manager
+- [ ] Backend port lead `[blocked]`
+- [ ] Storage/transaction owner `[blocked]`
+- [ ] Cluster/replication owner `[blocked]`
+- [ ] SRE/operations owner `[blocked]`
+- [ ] Release manager `[blocked]`
 
 Release is not certified until all required approvers sign off.
 
