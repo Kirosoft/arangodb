@@ -330,6 +330,7 @@ Release is not certified until all required approvers sign off.
 
 ## Commit timeline (latest first)
 
+- `861bfc54d5` Add validation flake detection and retry policy
 - `5018c6b807` Add auth reload UTF-8 policy and metric families
 - `69867b81d7` Complete M3 distributed coordination endpoints
 - `457df82cf7` Add agency CAS coordination endpoints
