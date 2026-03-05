@@ -324,6 +324,7 @@ Release is not certified until all required approvers sign off.
 
 ## Commit timeline (latest first)
 
+- `69867b81d7` Complete M3 distributed coordination endpoints
 - `457df82cf7` Add agency CAS coordination endpoints
 - `5b831c881f` Add maintenance-gated shard leadership flows
 - `62568c718d` Add M3 topology heartbeat and replication sync endpoints
