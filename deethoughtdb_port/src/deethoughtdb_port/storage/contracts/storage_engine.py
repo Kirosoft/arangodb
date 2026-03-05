@@ -62,6 +62,10 @@ class StorageEngineContract(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def truncate_collection(self, database: str, name: str) -> int:
+        raise NotImplementedError
+
+    @abstractmethod
     def insert_document(self, database: str, collection: str, document: dict) -> dict:
         raise NotImplementedError
 

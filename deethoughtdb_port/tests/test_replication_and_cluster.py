@@ -70,6 +70,27 @@ class ReplicationAndClusterTests(unittest.TestCase):
         self.assertEqual(logger_response.status_code, 200)
         self.assertIn("lastCommittedLogTick", logger_response.body["result"])
 
+        applier_state_request = HttpRequest(
+            method="GET",
+            path="/_api/replication/applier-state",
+            api_version=1,
+            headers=headers,
+        )
+        applier_state_response = runtime.handle_request(applier_state_request)
+        self.assertEqual(applier_state_response.status_code, 200)
+        self.assertTrue(applier_state_response.body["result"]["running"])
+        self.assertIn("serverId", applier_state_response.body["result"])
+
+        server_id_request = HttpRequest(
+            method="GET",
+            path="/_api/replication/server-id",
+            api_version=1,
+            headers=headers,
+        )
+        server_id_response = runtime.handle_request(server_id_request)
+        self.assertEqual(server_id_response.status_code, 200)
+        self.assertIn("serverId", server_id_response.body)
+
         stop_request = HttpRequest(
             method="PUT",
             path="/_api/replication/applier-stop",
@@ -127,6 +148,37 @@ class ReplicationAndClusterTests(unittest.TestCase):
         role_response = runtime.handle_request(role_request)
         self.assertEqual(role_response.status_code, 200)
         self.assertEqual(role_response.body["result"]["role"], "coordinator")
+
+        number_request = HttpRequest(
+            method="GET",
+            path="/_admin/cluster/numberOfServers",
+            api_version=1,
+            headers=headers,
+        )
+        number_response = runtime.handle_request(number_request)
+        self.assertEqual(number_response.status_code, 200)
+        self.assertGreaterEqual(number_response.body["result"]["total"], 1)
+
+        maintenance_get = HttpRequest(
+            method="GET",
+            path="/_admin/cluster/maintenance",
+            api_version=1,
+            headers=headers,
+        )
+        maintenance_get_response = runtime.handle_request(maintenance_get)
+        self.assertEqual(maintenance_get_response.status_code, 200)
+        self.assertFalse(maintenance_get_response.body["result"]["enabled"])
+
+        maintenance_put = HttpRequest(
+            method="PUT",
+            path="/_admin/cluster/maintenance",
+            api_version=1,
+            headers=headers,
+            body={"enabled": True},
+        )
+        maintenance_put_response = runtime.handle_request(maintenance_put)
+        self.assertEqual(maintenance_put_response.status_code, 200)
+        self.assertTrue(maintenance_put_response.body["result"]["enabled"])
 
 
 if __name__ == "__main__":

@@ -140,7 +140,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 - [x] Transaction begin/commit/abort/finish implemented.
 - [ ] Collection enrollment and lock/access mode semantics implemented. `[next]`
-- [ ] CRUD paths implemented (`document`, `insert`, `update`, `replace`, `remove`, `truncate`). `[next]`
+- [x] CRUD paths implemented (`document`, `insert`, `update`, `replace`, `remove`, `truncate`).
 - [x] Revision/precondition/conflict behavior implemented.
 - [ ] Async operation pathways implemented where required. `[deferred]`
 
@@ -256,7 +256,7 @@ Apply in every phase after initial bootstrap:
 
 ### M2 (end Phase 5)
 
-- [ ] Core backend data plane complete. `[next]`
+- [x] Core backend data plane complete.
 - [x] Gate A mostly green except tracked residuals.
 
 ### M3 (end Phase 7)
@@ -294,7 +294,7 @@ Release is not certified until all required approvers sign off.
 
 ## Validation status
 
-- Full package suite: **66 passed** (`python -m pytest -q`)
+- Full package suite: **67 passed** (`python -m pytest -q`)
 - Strict live suite on isolated target: **5 passed** (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
 - Live endpoint: `http://127.0.0.1:8530` (container `dth-live-8530`)
 
@@ -309,6 +309,10 @@ Release is not certified until all required approvers sign off.
 - Documented isolated live test workflow on port 8530
 - Added local `deethoughtdb_port/plan.md` and `deethoughtdb_port/progress.md`
 - Refreshed migration progress checkpoint
+- Added collection truncate endpoint semantics (`/_api/collection/<name>/truncate`)
+- Added replication `applier-state` and `server-id` endpoints
+- Added cluster `numberOfServers` and `maintenance` endpoints
+- Expanded M2/M3 test coverage in API and replication/cluster suites
 
 ## Commit timeline (latest first)
 

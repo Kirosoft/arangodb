@@ -174,6 +174,47 @@ class ApiHandlerTests(unittest.TestCase):
         self.assertEqual(count_response.status_code, 200)
         self.assertEqual(count_response.body["result"]["count"], 2)
 
+    def test_collection_truncate(self) -> None:
+        runtime = build_default_server()
+
+        create_collection = HttpRequest(
+            method="POST",
+            path="/_api/collection",
+            api_version=1,
+            body={"name": "truncate_me"},
+        )
+        collection_handler = runtime.handler_factory.create_handler(create_collection)
+        collection_response = runtime.handler_factory.invoke(collection_handler, create_collection)
+        self.assertEqual(collection_response.status_code, 201)
+
+        for value in [1, 2, 3]:
+            insert_doc = HttpRequest(
+                method="POST",
+                path="/_api/document/truncate_me",
+                api_version=1,
+                body={"value": value},
+            )
+            insert_handler = runtime.handler_factory.create_handler(insert_doc)
+            insert_response = runtime.handler_factory.invoke(insert_handler, insert_doc)
+            self.assertEqual(insert_response.status_code, 201)
+
+        truncate_request = HttpRequest(
+            method="PUT",
+            path="/_api/collection/truncate_me/truncate",
+            api_version=1,
+        )
+        truncate_handler = runtime.handler_factory.create_handler(truncate_request)
+        truncate_response = runtime.handler_factory.invoke(truncate_handler, truncate_request)
+        self.assertEqual(truncate_response.status_code, 200)
+        self.assertTrue(truncate_response.body["result"]["truncated"])
+        self.assertEqual(truncate_response.body["result"]["removed"], 3)
+
+        count_request = HttpRequest(method="GET", path="/_api/collection/truncate_me/count", api_version=1)
+        count_handler = runtime.handler_factory.create_handler(count_request)
+        count_response = runtime.handler_factory.invoke(count_handler, count_request)
+        self.assertEqual(count_response.status_code, 200)
+        self.assertEqual(count_response.body["result"]["count"], 0)
+
     def test_document_put_and_patch(self) -> None:
         runtime = build_default_server()
 

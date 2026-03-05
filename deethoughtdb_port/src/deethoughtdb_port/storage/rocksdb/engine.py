@@ -102,6 +102,15 @@ class RocksDBEnginePort(StorageEngineContract):
             self._documents[database].pop(name, None)
         self._wal.record(f"drop_collection:{database}/{name}")
 
+    def truncate_collection(self, database: str, name: str) -> int:
+        documents = self._documents.get(database, {}).get(name)
+        if documents is None:
+            raise KeyError(f"collection '{database}/{name}' not found")
+        removed = len(documents)
+        documents.clear()
+        self._wal.record(f"truncate_collection:{database}/{name}")
+        return removed
+
     def insert_document(self, database: str, collection: str, document: dict) -> dict:
         if database not in self._documents or collection not in self._documents[database]:
             raise KeyError(f"collection '{database}/{collection}' not found")

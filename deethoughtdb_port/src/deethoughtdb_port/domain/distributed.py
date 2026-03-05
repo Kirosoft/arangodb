@@ -13,6 +13,7 @@ class ReplicationState:
 class ReplicationService:
     def __init__(self, mode: str = "single") -> None:
         self._state = ReplicationState(mode=mode, applier_enabled=False, last_tick=0)
+        self._server_id = "2001001" if mode == "cluster" else "1001001"
         self._applier_config: dict[str, object] = {
             "endpoint": "",
             "username": "",
@@ -50,11 +51,24 @@ class ReplicationService:
         self._state.applier_enabled = False
         self._state.last_tick += 1
 
+    def server_id(self) -> str:
+        return self._server_id
+
+    def applier_state(self) -> dict[str, object]:
+        return {
+            "running": self._state.applier_enabled,
+            "lastAppliedContinuousTick": self._state.last_tick,
+            "lastProcessedContinuousTick": self._state.last_tick,
+            "safeResumeTick": self._state.last_tick,
+            "serverId": self._server_id,
+        }
+
 
 class ClusterService:
     def __init__(self, role: str = "single", enabled: bool = False) -> None:
         self._enabled = enabled
         self._role = role
+        self._maintenance = False
         self._servers: dict[str, str] = {
             "PRMR-1": "GOOD",
             "CRDN-1": "GOOD",
@@ -72,4 +86,21 @@ class ClusterService:
             "role": self._role,
             "enabled": self._enabled,
             "servers": dict(self._servers),
+            "maintenance": self._maintenance,
+        }
+
+    def set_maintenance(self, enabled: bool) -> bool:
+        self._maintenance = enabled
+        return self._maintenance
+
+    def maintenance(self) -> bool:
+        return self._maintenance
+
+    def number_of_servers(self) -> dict[str, int]:
+        coordinators = sum(1 for server in self._servers if server.startswith("CRDN"))
+        dbservers = sum(1 for server in self._servers if server.startswith("PRMR"))
+        return {
+            "coordinators": coordinators,
+            "dbservers": dbservers,
+            "total": len(self._servers),
         }

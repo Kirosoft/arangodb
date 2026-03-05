@@ -198,6 +198,25 @@ class CollectionHandler(RestHandler):
                 body={"result": {"dropped": request.suffixes[0], "database": database}},
             )
 
+        if request.method in {"PUT", "POST"} and len(request.suffixes) == 2 and request.suffixes[1] == "truncate":
+            collection_name = request.suffixes[0]
+            try:
+                removed = self._storage.truncate_collection(database, collection_name)
+            except KeyError:
+                return HttpResponse(
+                    status_code=404,
+                    body={
+                        "error": True,
+                        "code": 404,
+                        "errorNum": 404,
+                        "errorMessage": f"collection '{collection_name}' not found",
+                    },
+                )
+            return HttpResponse(
+                status_code=200,
+                body={"result": {"name": collection_name, "truncated": True, "removed": removed}},
+            )
+
         raise bad_request("unsupported collection path")
 
 
@@ -975,6 +994,18 @@ class ReplicationHandler(RestHandler):
                 },
             )
 
+        if request.method == "GET" and request.path == "/_api/replication/applier-state":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._replication.applier_state()},
+            )
+
+        if request.method == "GET" and request.path == "/_api/replication/server-id":
+            return HttpResponse(
+                status_code=200,
+                body={"serverId": self._replication.server_id()},
+            )
+
         if request.path == "/_api/replication/applier-config":
             if request.method == "GET":
                 return HttpResponse(
@@ -1156,6 +1187,27 @@ class AdminClusterHandler(RestHandler):
                 status_code=200,
                 body={"result": {"role": self._cluster.role()}},
             )
+
+        if request.method == "GET" and request.path == "/_admin/cluster/numberOfServers":
+            return HttpResponse(
+                status_code=200,
+                body={"result": self._cluster.number_of_servers()},
+            )
+
+        if request.path == "/_admin/cluster/maintenance":
+            if request.method == "GET":
+                return HttpResponse(
+                    status_code=200,
+                    body={"result": {"enabled": self._cluster.maintenance()}},
+                )
+            if request.method in {"PUT", "POST"}:
+                enabled = False
+                if isinstance(request.body, dict):
+                    enabled = bool(request.body.get("enabled", False))
+                return HttpResponse(
+                    status_code=200,
+                    body={"result": {"enabled": self._cluster.set_maintenance(enabled)}},
+                )
 
         raise bad_request("unsupported cluster path")
 
