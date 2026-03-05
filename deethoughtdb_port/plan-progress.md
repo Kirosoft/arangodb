@@ -205,7 +205,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 - [x] Statistics endpoints and request accounting aligned.
 - [x] Crash/reporting artifacts capture integrated.
 - [x] Runbook artifact collection paths validated.
-- [ ] Flake detection and retry policies established. `[next]`
+- [x] Flake detection and retry policies established.
 
 ### Exit Gate
 
@@ -294,7 +294,7 @@ Release is not certified until all required approvers sign off.
 
 ## Validation status
 
-- Full package suite: **69 passed** (`python -m pytest -q`)
+- Full package suite: **71 passed** (`python -m pytest -q`)
 - Strict live suite on isolated target: **5 passed** (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
 - Live endpoint: `http://127.0.0.1:8530` (container `dth-live-8530`)
 
@@ -325,6 +325,8 @@ Release is not certified until all required approvers sign off.
 - Added UTF-8 payload validation policy with API error handling
 - Added metric families for server/scheduler/replication/cluster in admin metrics/statistics
 - Added `deethoughtdb_port/risk-register.md` for blocking risk tracking
+- Added validation runner retry policy and flake detection with per-attempt artifacts
+- Added validation-runner tests for flaky and hard-fail retry classification
 
 ## Commit timeline (latest first)
 

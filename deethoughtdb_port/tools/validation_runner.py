@@ -285,6 +285,52 @@ def run_suite(spec: SuiteSpec, env: dict[str, str]) -> dict:
     }
 
 
+def classify_retry_result(attempts: list[dict]) -> dict:
+    if not attempts:
+        return {"status": "fail", "flaky": False, "attempts": 0}
+
+    final_status = attempts[-1]["status"]
+    seen_fail = any(item["status"] == "fail" for item in attempts)
+    seen_pass = any(item["status"] == "pass" for item in attempts)
+    flaky = final_status == "pass" and seen_fail and seen_pass
+    return {
+        "status": final_status,
+        "flaky": flaky,
+        "attempts": len(attempts),
+    }
+
+
+def run_suite_with_retries(spec: SuiteSpec, env: dict[str, str], retries: int) -> dict:
+    attempt_results: list[dict] = []
+    max_attempts = max(1, retries + 1)
+
+    for _ in range(max_attempts):
+        result = run_suite(spec, env)
+        attempt_results.append(result)
+        if result["status"] == "pass":
+            break
+
+    classification = classify_retry_result(attempt_results)
+    final = dict(attempt_results[-1])
+    final["attemptResults"] = [
+        {
+            "status": item["status"],
+            "exitCode": item["exitCode"],
+            "durationSec": item["durationSec"],
+            "startedAt": item["startedAt"],
+            "endedAt": item["endedAt"],
+        }
+        for item in attempt_results
+    ]
+    final["attemptCount"] = classification["attempts"]
+    final["flaky"] = classification["flaky"]
+    final["status"] = classification["status"]
+    final["exitCode"] = 0 if classification["status"] == "pass" else final["exitCode"]
+    final["stdoutByAttempt"] = [item["stdout"] for item in attempt_results]
+    final["stderrByAttempt"] = [item["stderr"] for item in attempt_results]
+    return final
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run deethoughtdb_port validation suites")
     parser.add_argument(
@@ -296,6 +342,12 @@ def main() -> int:
         "--matrix",
         default=str(_default_matrix_path()),
         help="path to arangod-port-validation-matrix.yml",
+    )
+    parser.add_argument(
+        "--retries",
+        type=int,
+        default=1,
+        help="number of retries per suite after initial failure",
     )
     args = parser.parse_args()
 
@@ -325,7 +377,7 @@ def main() -> int:
         )
 
     for suite in suites:
-        results.append(run_suite(suite, env))
+        results.append(run_suite_with_retries(suite, env, retries=args.retries))
 
     blocking_failures = [
         result
@@ -338,6 +390,12 @@ def main() -> int:
         "matrixPath": str(matrix_path),
         "git": _git_metadata(repo_root),
         "overall": "pass" if not blocking_failures else "fail",
+        "retryPolicy": {
+            "retries": max(0, int(args.retries)),
+            "maxAttempts": max(1, int(args.retries) + 1),
+            "flakeDetection": True,
+        },
+        "flakes": [r["suite"] for r in results if r.get("flaky")],
         "results": [
             {
                 "suite": r["suite"],
@@ -347,6 +405,8 @@ def main() -> int:
                 "status": r["status"],
                 "durationSec": r["durationSec"],
                 "exitCode": r["exitCode"],
+                "attemptCount": r.get("attemptCount", 1),
+                "flaky": bool(r.get("flaky", False)),
             }
             for r in results
         ],
@@ -362,6 +422,16 @@ def main() -> int:
         safe_name = result["suite"].replace("/", "_")
         (output_dir / f"{safe_name}.stdout.log").write_text(result["stdout"], encoding="utf-8")
         (output_dir / f"{safe_name}.stderr.log").write_text(result["stderr"], encoding="utf-8")
+        for attempt_index, content in enumerate(result.get("stdoutByAttempt", []), start=1):
+            (output_dir / f"{safe_name}.attempt{attempt_index}.stdout.log").write_text(
+                content,
+                encoding="utf-8",
+            )
+        for attempt_index, content in enumerate(result.get("stderrByAttempt", []), start=1):
+            (output_dir / f"{safe_name}.attempt{attempt_index}.stderr.log").write_text(
+                content,
+                encoding="utf-8",
+            )
 
     return 0 if summary["overall"] == "pass" else 1
 

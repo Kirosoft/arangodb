@@ -81,6 +81,26 @@ class ValidationRunnerTests(unittest.TestCase):
             self.assertTrue(loaded["results"][0]["gateBlocking"])
             self.assertIn("matrixCoverage", loaded)
 
+    def test_classify_retry_result_flaky(self) -> None:
+        attempts = [
+            {"status": "fail", "exitCode": 1},
+            {"status": "pass", "exitCode": 0},
+        ]
+        classification = validation_runner.classify_retry_result(attempts)
+        self.assertEqual(classification["status"], "pass")
+        self.assertTrue(classification["flaky"])
+        self.assertEqual(classification["attempts"], 2)
+
+    def test_classify_retry_result_hard_fail(self) -> None:
+        attempts = [
+            {"status": "fail", "exitCode": 1},
+            {"status": "fail", "exitCode": 1},
+        ]
+        classification = validation_runner.classify_retry_result(attempts)
+        self.assertEqual(classification["status"], "fail")
+        self.assertFalse(classification["flaky"])
+        self.assertEqual(classification["attempts"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
