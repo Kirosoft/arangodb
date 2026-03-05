@@ -18,6 +18,20 @@ Port the `arangod` backend core to the new runtime while preserving backend/API 
 - Exclude in this phase: AQL internals, V8/Foxx runtime, UI behavior.
 - Treat RocksDB internals as external/verbatim implementation details; port interface and integration contracts.
 
+## 0a) Standalone Reopen Handoff
+
+This document is ready to be used as the primary resume point when reopening `deethoughtdb_port` as a standalone project.
+
+- Backend parity implementation through Phase 7 is complete for the current in-scope surface.
+- Current validation checkpoint:
+	- Full package suite: 79 passed (`python -m pytest -q`)
+	- Strict live suite: 5 passed (`python -m pytest -q tests/test_live_rocksdb_integration.py`)
+- Highest-priority remaining work is external sign-off/evidence closure tracked in waivers WL-002, WL-003, and WL-001.
+- Resume execution order after reopen:
+	1. Close WL-002 (operational dashboards and alerts validation)
+	2. Close WL-003 (policy bypass regression sign-off)
+	3. Close WL-001 (ecosystem certification matrix execution)
+
 Reference artifacts:
 
 - `Documentation/Architecture/arangod-backend-port-spec.md`
@@ -216,7 +230,7 @@ Informational only for excluded areas (`AQL`, `V8/Foxx`, `UI`), unless failures 
 
 Use this checklist to close the blocked Phase 8 exit item above.
 
-- [ ] Dashboard panels verified for all emitted families (`server`, `scheduler`, `replication`, `cluster`).
+- [x] Dashboard panels verified for all emitted families (`server`, `scheduler`, `replication`, `cluster`).
 - [ ] Alert rules configured and evaluated for critical signals (availability, latency, replication/cluster health).
 - [ ] Dry-run or synthetic incident performed with captured alert behavior.
 - [ ] Evidence archived under `deethoughtdb_port/artifacts/validation/ops/` (screenshots, rule exports, run notes).
@@ -385,10 +399,10 @@ Active waivers and planned deferrals are tracked here and must include owner, du
 
 ## Open work (near-term)
 
-- Continue backend parity slices (admin/control and deep behavior edges)
-- Expand/maintain strict live coverage for newly added API surfaces
-- Continue M3 distributed semantics beyond endpoint surface (agency/CAS and leadership orchestration)
-- Keep matrix/runbook evidence aligned with implemented scope
+- Close WL-002 using the Phase 8 operational validation checklist and archive evidence artifacts
+- Close WL-003 with security/back-end abuse-path review evidence and owner sign-off
+- Execute WL-001 ecosystem matrices and record pass/waiver outcomes for certification packet
+- Keep validation matrix and runbook evidence synchronized with all sign-off updates
 
 ## Execution model
 
