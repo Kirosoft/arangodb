@@ -1,0 +1,259 @@
+from __future__ import annotations
+
+from pathlib import Path
+import uuid
+
+from deethoughtdb_port.storage.contracts import (
+    RecoveryState,
+    StorageEngineContract,
+    StorageSnapshot,
+)
+
+from .bindings import RocksDBBindings
+from .catalog import RocksDBCatalog
+from .config import RocksDBPortConfig
+from .wal import RocksDBWalManager
+
+
+class RocksDBEnginePort(StorageEngineContract):
+    def __init__(self, config: RocksDBPortConfig) -> None:
+        self._config = config
+        self._config.base_path.mkdir(parents=True, exist_ok=True)
+        self._config.wal_path.mkdir(parents=True, exist_ok=True)
+
+        self._catalog = RocksDBCatalog()
+        self._wal = RocksDBWalManager(self._config.wal_path)
+        self._bindings = RocksDBBindings()
+        self._db = None
+        self._released_tick = 0
+        self._recovery_state = RecoveryState.DONE
+        self._replication_config: dict[str, object] = {}
+        self._documents: dict[str, dict[str, dict[str, dict]]] = {}
+        self._lifecycle_state = "initialized"
+
+        if self._bindings.available:
+            data_file = Path(self._config.base_path) / "deethoughtdb.rocksdb"
+            self._db = self._bindings.open(data_file)
+        self._lifecycle_state = "started"
+
+        self.create_database("_system")
+
+    def type_name(self) -> str:
+        return "rocksdb"
+
+    def health_check(self) -> dict:
+        return {
+            "status": "ok",
+            "engine": "rocksdb",
+            "bindingAvailable": self._bindings.available,
+            "recoveryState": self._recovery_state.value,
+        }
+
+    def get_capabilities(self) -> dict:
+        return {
+            "engine": "rocksdb",
+            "aql": False,
+            "transactions": True,
+            "databases": True,
+            "collections": True,
+            "views": True,
+            "wal": True,
+            "bindingAvailable": self._bindings.available,
+        }
+
+    def get_databases(self) -> list[dict]:
+        return self._catalog.database_list()
+
+    def create_database(self, name: str) -> dict:
+        db = self._catalog.create_database(name)
+        self._documents.setdefault(name, {})
+        self._wal.record(f"create_database:{name}")
+        return db
+
+    def drop_database(self, name: str) -> None:
+        self._catalog.drop_database(name)
+        self._documents.pop(name, None)
+        self._wal.record(f"drop_database:{name}")
+
+    def create_collection(self, database: str, name: str) -> dict:
+        col = self._catalog.create_collection(database, name)
+        self._documents.setdefault(database, {})
+        self._documents[database].setdefault(name, {})
+        self._wal.record(f"create_collection:{database}/{name}")
+        return col
+
+    def list_collections(self, database: str) -> list[dict]:
+        collections = self._catalog.collections.get(database, {})
+        return sorted(collections.values(), key=lambda item: item["id"])
+
+    def get_collection(self, database: str, name: str) -> dict | None:
+        collection = self._catalog.collections.get(database, {}).get(name)
+        if collection is None:
+            return None
+        return dict(collection)
+
+    def count_documents(self, database: str, collection: str) -> int:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None:
+            return 0
+        return len(documents)
+
+    def drop_collection(self, database: str, name: str) -> None:
+        self._catalog.drop_collection(database, name)
+        if database in self._documents:
+            self._documents[database].pop(name, None)
+        self._wal.record(f"drop_collection:{database}/{name}")
+
+    def truncate_collection(self, database: str, name: str) -> int:
+        documents = self._documents.get(database, {}).get(name)
+        if documents is None:
+            raise KeyError(f"collection '{database}/{name}' not found")
+        removed = len(documents)
+        documents.clear()
+        self._wal.record(f"truncate_collection:{database}/{name}")
+        return removed
+
+    def rename_collection(self, database: str, name: str, new_name: str) -> dict:
+        if database not in self._documents or name not in self._documents[database]:
+            raise KeyError(f"collection '{database}/{name}' not found")
+        if new_name in self._documents[database] and new_name != name:
+            raise ValueError(f"collection '{database}/{new_name}' already exists")
+
+        renamed = self._catalog.rename_collection(database, name, new_name)
+        documents = self._documents[database].pop(name)
+        migrated: dict[str, dict] = {}
+        for key, document in documents.items():
+            updated = dict(document)
+            updated["_id"] = f"{new_name}/{key}"
+            migrated[key] = updated
+        self._documents[database][new_name] = migrated
+        self._wal.record(f"rename_collection:{database}/{name}->{new_name}")
+        return renamed
+
+    def update_collection_properties(self, database: str, name: str, properties: dict) -> dict:
+        updated = self._catalog.update_collection_properties(database, name, properties)
+        self._wal.record(f"update_collection_properties:{database}/{name}")
+        return updated
+
+    def insert_document(self, database: str, collection: str, document: dict) -> dict:
+        if database not in self._documents or collection not in self._documents[database]:
+            raise KeyError(f"collection '{database}/{collection}' not found")
+
+        stored = dict(document)
+        key = str(stored.get("_key", uuid.uuid4().hex))
+        stored["_key"] = key
+        stored["_id"] = f"{collection}/{key}"
+        stored["_rev"] = self._new_revision()
+        self._documents[database][collection][key] = stored
+        self._wal.record(f"insert_document:{database}/{collection}/{key}")
+        return dict(stored)
+
+    def get_document(self, database: str, collection: str, key: str) -> dict | None:
+        document = self._documents.get(database, {}).get(collection, {}).get(key)
+        if document is None:
+            return None
+        return dict(document)
+
+    def remove_document(self, database: str, collection: str, key: str) -> bool:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None or key not in documents:
+            return False
+        documents.pop(key)
+        self._wal.record(f"remove_document:{database}/{collection}/{key}")
+        return True
+
+    def replace_document(self, database: str, collection: str, key: str, document: dict) -> dict | None:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None or key not in documents:
+            return None
+        replaced = dict(document)
+        replaced["_key"] = key
+        replaced["_id"] = f"{collection}/{key}"
+        replaced["_rev"] = self._new_revision()
+        documents[key] = replaced
+        self._wal.record(f"replace_document:{database}/{collection}/{key}")
+        return dict(replaced)
+
+    def update_document(self, database: str, collection: str, key: str, patch: dict) -> dict | None:
+        documents = self._documents.get(database, {}).get(collection)
+        if documents is None or key not in documents:
+            return None
+        updated = dict(documents[key])
+        updated.update(patch)
+        updated["_key"] = key
+        updated["_id"] = f"{collection}/{key}"
+        updated["_rev"] = self._new_revision()
+        documents[key] = updated
+        self._wal.record(f"update_document:{database}/{collection}/{key}")
+        return dict(updated)
+
+    @staticmethod
+    def _new_revision() -> str:
+        return uuid.uuid4().hex
+
+    def create_index(self, database: str, collection: str, definition: dict) -> dict:
+        index_info = self._catalog.create_index(database, collection, definition)
+        self._wal.record(f"create_index:{database}/{collection}/{index_info['id']}")
+        return index_info
+
+    def list_indexes(self, database: str, collection: str) -> list[dict]:
+        return self._catalog.list_indexes(database, collection)
+
+    def create_view(self, database: str, definition: dict) -> dict:
+        view_info = self._catalog.create_view(database, definition)
+        self._wal.record(f"create_view:{database}/{view_info['name']}")
+        return view_info
+
+    def list_views(self, database: str) -> list[dict]:
+        return self._catalog.list_views(database)
+
+    def get_view(self, database: str, name: str) -> dict | None:
+        return self._catalog.get_view(database, name)
+
+    def drop_view(self, database: str, name: str) -> bool:
+        removed = self._catalog.drop_view(database, name)
+        if removed:
+            self._wal.record(f"drop_view:{database}/{name}")
+        return removed
+
+    def flush_wal(self) -> dict:
+        return self._wal.flush()
+
+    def current_wal_files(self) -> list[str]:
+        return self._wal.current_files()
+
+    def recovery_state(self) -> RecoveryState:
+        return self._recovery_state
+
+    def recovery_tick(self) -> int:
+        return self._wal.current_tick()
+
+    def current_tick(self) -> int:
+        return self._wal.current_tick()
+
+    def release_tick(self, tick: int) -> None:
+        self._released_tick = max(self._released_tick, tick)
+
+    def current_snapshot(self) -> StorageSnapshot:
+        return StorageSnapshot(tick=self.current_tick())
+
+    def create_replication_applier_config(self, config: dict) -> dict:
+        self._replication_config.update(config)
+        self._wal.record("update_replication_applier")
+        return dict(self._replication_config)
+
+    def get_replication_applier_config(self) -> dict:
+        return dict(self._replication_config)
+
+    def remove_replication_applier_config(self) -> None:
+        self._replication_config = {}
+        self._wal.record("remove_replication_applier")
+
+    def start(self) -> None:
+        self._lifecycle_state = "started"
+
+    def stop(self) -> None:
+        self._lifecycle_state = "stopped"
+
+    def lifecycle_state(self) -> str:
+        return self._lifecycle_state

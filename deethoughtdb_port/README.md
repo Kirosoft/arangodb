@@ -1,0 +1,99 @@
+# DeethoughtDB Port Foundation
+
+This package contains the initial implementation for the `plan.md` Phases 2-3:
+
+- feature lifecycle and dependency-aware startup/shutdown
+- REST handler factory with API versioning and prefix matching
+- standardized backend API error envelope
+- domain service interfaces for catalog/storage/transactions
+
+## Dependency and output boundary
+
+- No non-stdlib Python dependencies are required by `deethoughtdb_port` runtime code.
+- Default runtime outputs are constrained to `deethoughtdb_port/artifacts/**`.
+- A dependency-boundary test enforces no imports outside stdlib + local package:
+	- `tests/test_dependency_boundary.py`
+
+## Quick start
+
+```bash
+cd deethoughtdb_port
+python -m pip install -e .
+python -m unittest discover -s tests -v
+```
+
+## Live RocksDB integration tests (no mocks)
+
+These tests validate behavior against a running `arangod` using the real RocksDB engine.
+
+Required environment variables:
+
+- `DTH_LIVE_ROCKSDB=1`
+- `DTH_ARANGO_PASSWORD=<root-password>`
+- optional: `DTH_ARANGO_URL` (default `http://127.0.0.1:8529`)
+- optional: `DTH_ARANGO_USER` (default `root`)
+- optional: `DTH_STRICT_LIVE_ROCKSDB=1` (fail instead of skip if live test prerequisites are missing)
+
+Run:
+
+```bash
+cd deethoughtdb_port
+python -m unittest tests.test_live_rocksdb_integration -v
+```
+
+Strict CI mode (fail if live prerequisites are missing):
+
+```bash
+export DTH_STRICT_LIVE_ROCKSDB=1
+export DTH_LIVE_ROCKSDB=1
+export DTH_ARANGO_PASSWORD=<root-password>
+python -m unittest tests.test_live_rocksdb_integration -v
+```
+
+Example isolated local run on port 8530 (recommended to avoid clashing with an existing 8529 instance):
+
+```bash
+docker rm -f dth-live-8530 || true
+docker run -d --name dth-live-8530 -p 8530:8529 -e ARANGO_ROOT_PASSWORD=password arangodb:3.11
+```
+
+PowerShell strict live run against the isolated instance:
+
+```powershell
+$env:DTH_LIVE_ROCKSDB='1'
+$env:DTH_STRICT_LIVE_ROCKSDB='1'
+$env:DTH_ARANGO_URL='http://127.0.0.1:8530'
+$env:DTH_ARANGO_USER='root'
+$env:DTH_ARANGO_PASSWORD='password'
+python -m pytest -q tests/test_live_rocksdb_integration.py
+```
+
+The suite will:
+
+1. authenticate against `/_open/auth`
+2. assert `/_api/engine` reports `rocksdb`
+3. create an isolated temporary database
+4. create collection/documents and validate roundtrip behavior
+5. run a live transaction begin/commit path
+6. delete the temporary database during teardown
+
+Example local `arangod` launch (single server):
+
+```bash
+arangod --server.endpoint tcp://127.0.0.1:8529 --server.authentication true --database.directory <path>
+```
+
+## Validation runner (phase gate artifact output)
+
+Run gate-oriented validation and emit artifacts under `deethoughtdb_port/artifacts/validation/gate-runner`:
+
+```bash
+cd deethoughtdb_port
+python tools/validation_runner.py
+```
+
+Generated files include:
+
+- `summary.json`
+- `<suite>.stdout.log`
+- `<suite>.stderr.log`

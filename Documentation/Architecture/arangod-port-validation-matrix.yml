@@ -1,0 +1,341 @@
+version: 1
+generatedOn: 2026-03-04
+purpose: >
+  Machine-readable validation matrix for the arangod backend port. This file is
+  the executable scope contract for deciding whether the port is valid.
+
+scopeSources:
+  - tests/tests.yml
+  - tests/*.yml
+  - tests/CMakeLists.txt
+  - scripts/unittest
+  - scripts/unittest.ps1
+  - js/client/modules/@arangodb/testsuites/*.js
+
+gates:
+  A:
+    name: backend-core
+    blocking: true
+    description: Must pass for backend functional validity.
+  B:
+    name: distributed-operational
+    blocking: true
+    description: Must pass for clustered/operational production readiness.
+  C:
+    name: deferred-excluded
+    blocking: false
+    description: Informational in this phase (AQL/V8/UI exclusion scope).
+
+currentBaseline:
+  testsCppAndHeaders: 609
+  gtestCppFiles: 375
+  testsJsFiles: 1398
+  testsYamlFiles: 11
+  jsTestsuiteRegistryModules: 42
+
+manifests:
+  - file: tests/tests.yml
+    category: core-ci
+    required: true
+    gate: A
+  - file: tests/arangojs.yml
+    category: ecosystem-driver
+    required: true
+    gate: B
+  - file: tests/go.yml
+    category: ecosystem-driver
+    required: true
+    gate: B
+  - file: tests/java.yml
+    category: ecosystem-driver
+    required: true
+    gate: B
+  - file: tests/kafka.yml
+    category: ecosystem-integration
+    required: true
+    gate: B
+  - file: tests/py.yml
+    category: ecosystem-driver
+    required: true
+    gate: B
+  - file: tests/py-async.yml
+    category: ecosystem-driver
+    required: true
+    gate: B
+  - file: tests/spark-ds.yml
+    category: ecosystem-integration
+    required: true
+    gate: B
+  - file: tests/spring-data.yml
+    category: ecosystem-integration
+    required: true
+    gate: B
+  - file: tests/tinkerpop.yml
+    category: ecosystem-integration
+    required: true
+    gate: B
+  - file: tests/ui.yml
+    category: ui-automation
+    required: false
+    gate: C
+    exclusionReason: UI not in current backend-port scope
+
+coreCiGroups:
+  - name: single_server_only
+    gate: A
+    deploymentHint: single
+  - name: shell_api_multi
+    gate: A
+    deploymentHint: single
+  - name: shell_api_multi_permissions
+    gate: A
+    deploymentHint: single
+  - name: shell_client
+    gate: A
+    deploymentHint: single
+  - name: shell_client_large
+    gate: A
+    deploymentHint: single
+  - name: shell_client_multi
+    gate: A
+    deploymentHint: single
+  - name: shell_client_transaction
+    gate: A
+    deploymentHint: single
+  - name: shell_client_hot_backup_traffic_multi
+    gate: B
+    deploymentHint: single
+  - name: authentication
+    gate: A
+    deploymentHint: mixed
+  - name: authentication_parameters
+    gate: A
+    deploymentHint: single
+  - name: authentication_audit_endpoints_import_export_agency
+    gate: A
+    deploymentHint: single
+  - name: communication
+    gate: A
+    deploymentHint: mixed
+  - name: config
+    gate: A
+    deploymentHint: mixed
+  - name: readOnly
+    gate: A
+    deploymentHint: mixed
+  - name: import_export_aql_vector
+    gate: A
+    deploymentHint: mixed
+  - name: queryCacheAuthorization
+    gate: C
+    deploymentHint: mixed
+    exclusionReason: query/AQL cache path is out-of-scope in this phase
+  - name: server_parameters
+    gate: A
+    deploymentHint: mixed
+  - name: shell_fuzzer
+    gate: A
+    deploymentHint: mixed
+  - name: arangobench_deadlock_audit
+    gate: B
+    deploymentHint: mixed
+  - name: rta_makedata
+    gate: B
+    deploymentHint: mixed
+  - name: recovery
+    gate: B
+    deploymentHint: single
+  - name: recovery_server
+    gate: B
+    deploymentHint: single
+  - name: recovery_cluster
+    gate: B
+    deploymentHint: cluster
+  - name: load_balancing
+    gate: B
+    deploymentHint: cluster
+  - name: cluster_resilience
+    gate: B
+    deploymentHint: cluster
+  - name: resilience_failover
+    gate: B
+    deploymentHint: cluster
+  - name: resilience_failover_failure
+    gate: B
+    deploymentHint: cluster
+  - name: resilience_failover_view
+    gate: B
+    deploymentHint: cluster
+  - name: resilience_transactions
+    gate: B
+    deploymentHint: cluster
+  - name: restart
+    gate: B
+    deploymentHint: cluster
+  - name: replication_shell
+    gate: B
+    deploymentHint: single
+  - name: replication_static
+    gate: B
+    deploymentHint: single
+  - name: replication_sync
+    gate: B
+    deploymentHint: single
+  - name: replication_random
+    gate: B
+    deploymentHint: mixed
+  - name: wal_cleanup
+    gate: B
+    deploymentHint: mixed
+  - name: dump_single
+    gate: B
+    deploymentHint: single
+  - name: dump_cluster_medium
+    gate: B
+    deploymentHint: cluster
+  - name: dump_multiple_two
+    gate: B
+    deploymentHint: mixed
+  - name: hot_backup
+    gate: B
+    deploymentHint: mixed
+  - name: foxx_manager
+    gate: C
+    deploymentHint: mixed
+    exclusionReason: Foxx/V8 runtime out-of-scope
+  - name: gtest_arangodb
+    gate: A
+    deploymentHint: single
+  - name: gtest_iresearch
+    gate: A
+    deploymentHint: single
+  - name: shell_client_aql
+    gate: C
+    deploymentHint: single
+    exclusionReason: AQL-heavy suite out-of-scope
+  - name: shell_client_aql_large
+    gate: C
+    deploymentHint: single
+    exclusionReason: AQL-heavy suite out-of-scope
+  - name: replication_aql
+    gate: C
+    deploymentHint: mixed
+    exclusionReason: AQL replication validation out-of-scope
+  - name: chaos
+    gate: B
+    deploymentHint: cluster
+  - name: chaos_subq
+    gate: C
+    deploymentHint: cluster
+    exclusionReason: subquery/AQL-heavy workload out-of-scope
+
+testsYmlSuiteRefs:
+  - agency
+  - agency-restart
+  - arangobench
+  - arangosh
+  - audit_client
+  - audit_server
+  - authentication
+  - BackupAuthNoSysTests
+  - BackupAuthSysTests
+  - BackupNoAuthSysTests
+  - communication
+  - communication_ssl
+  - deadlock
+  - dump
+  - dump_authentication
+  - dump_encrypted
+  - dump_jwt
+  - dump_maskings
+  - dump_mixed_cluster_single
+  - dump_mixed_single_cluster
+  - dump_multiple_same
+  - dump_multiple_two
+  - dump_non_parallel
+  - dump_with_crashes
+  - dump_with_crashes_non_parallel
+  - endpoints
+  - export
+  - fuerte
+  - hot_backup
+  - hot_backup_aql
+  - hot_backup_el_cheapo
+  - hot_backup_smart_graphs
+  - hot_backup_views
+  - http_replication
+  - importing
+  - load_balancing
+  - load_balancing_auth
+  - paths_server
+  - permissions
+  - replication_fuzz
+  - replication_ongoing
+  - replication_ongoing_frompresent
+  - replication_ongoing_global
+  - replication_ongoing_global_spec
+  - resilience_analyzers
+  - resilience_move
+  - resilience_sharddist
+  - rta_makedata
+  - server_permissions
+  - server_secrets
+  - shell_api
+  - shell_api_multi
+  - shell_client_aql_vector
+  - shell_client_multi
+  - shell_client_traffic
+  - shell_client_transaction
+  - shell_replication
+  - version
+
+jsTestsuiteRegistry:
+  - agency
+  - agency-restart
+  - aql
+  - arangobench
+  - arangosh
+  - audit
+  - authentication
+  - backup
+  - chaos
+  - communication
+  - config
+  - drivers
+  - dump
+  - endpoints
+  - export
+  - fail
+  - foxxmanager
+  - fuerte
+  - fuzzer
+  - go
+  - gtest
+  - hotbackup
+  - importing
+  - java
+  - js
+  - loadBalancing
+  - paths_server
+  - permissions_client
+  - php
+  - python-arango
+  - queryCacheAuthorization
+  - readOnly
+  - recovery
+  - recovery_server
+  - replication
+  - replication2
+  - resilience
+  - restart
+  - rta_makedata
+  - server_permissions
+  - version
+  - wal
+
+decisionRule:
+  backendPortValidWhen:
+    - allBlockingGateAItemsPass
+    - allBlockingGateBItemsPass
+    - anyGateCFailuresAreOnlyInDeclaredExcludedCapabilities
+    - noUnexplainedRegressionInStorageTransactionReplicationAdminPlanes
